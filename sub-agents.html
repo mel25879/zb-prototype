@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>我的下级代理</title>
+  <link rel="stylesheet" href="assets/css/common.css?v=7">
+</head>
+<body data-title="我的下级代理">
+  <div id="app"></div>
+  <script src="assets/js/common.js?v=7"></script>
+  <script>
+    /* =================================================================
+       我的下级代理 · L1 + L2 可访问（L3 是底层代理，无下级）
+       列：代理ID / 代理邮箱 / 代理级别 / 成为代理时间 /
+           本月给我贡献的分成金额 / 给我贡献的总分成金额 /
+           分成比例 / 操作（设置分成比例）
+       展示规则：
+         - L1 视角：列表展示 L2 + L3 全部下级
+         - L2 视角：列表只展示 L3 下级
+       ================================================================= */
+
+    /* —— 守卫：L3 不允许访问（L3 没有下级代理） —— */
+    (function guardNotL3() {
+      try {
+        const role = localStorage.getItem("zb_agent_role") || "L1";
+        if (role === "L3") {
+          window.location.replace("rules.html");
+        }
+      } catch (e) {}
+    })();
+
+    /* ============== Toast / 工具 ============== */
+    function toast(msg, type) {
+      const t = document.createElement('div');
+      t.className = `toast toast-${type || 'success'}`;
+      t.innerHTML = `<span class="toast-ico">${type === 'danger' ? '✕' : '✓'}</span>${msg}`;
+      document.body.appendChild(t);
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 250); }, 2000);
+    }
+    function fmtUSDT(v) {
+      return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
+    }
+
+    /* ============== Mock 数据 ============== */
+    // agentId          - 代理ID
+    // email            - 代理邮箱
+    // tier             - 代理级别（'L2' | 'L3'）
+    //                    L1 视角看到全部下级（L2 + L3）；L2 视角只看到自己的 L3 下级
+    // becomeTime       - 成为代理时间
+    // monthShareAmount - 本月给我贡献的分成金额
+    // totalShareAmount - 给我贡献的总分成金额
+    // shareRate        - 分成比例（0-100，整数）
+    const SUB_AGENTS = [
+      { agentId: 'ASSDAS434', email: '20260528@qq.com',       tier: 'L2', becomeTime: '2026-05-31 15:34:10', monthShareAmount: 4000,  totalShareAmount: 5000,   shareRate: 60  },
+      { agentId: 'ASSDAS435', email: 'partner***@163.com',    tier: 'L2', becomeTime: '2026-03-30 08:50:00', monthShareAmount: 342.8, totalShareAmount: 1820.55,shareRate: 100 },
+      { agentId: 'ASSDAS436', email: 'sub***@gmail.com',      tier: 'L3', becomeTime: '2026-04-22 09:12:00', monthShareAmount: 125.5, totalShareAmount: 530.25, shareRate: 70  },
+      { agentId: 'ASSDAS437', email: 'agent3***@outlook.com', tier: 'L3', becomeTime: '2026-04-15 13:42:00', monthShareAmount: 88.3,  totalShareAmount: 220.10, shareRate: 50  },
+      { agentId: 'ASSDAS438', email: 'kelvin***@qq.com',      tier: 'L3', becomeTime: '2026-05-10 11:20:00', monthShareAmount: 220.4, totalShareAmount: 780.30, shareRate: 80  },
+    ];
+
+    /* ============== 分成比例持久化 ============== */
+    const RATE_KEY = 'zb_subagent_rates_v1';
+    function loadRates() {
+      try {
+        const d = JSON.parse(localStorage.getItem(RATE_KEY));
+        if (d && typeof d === 'object') return d;
+      } catch (e) {}
+      return {};
+    }
+    function saveRates(rates) {
+      try { localStorage.setItem(RATE_KEY, JSON.stringify(rates)); } catch (e) {}
+    }
+    // 合并已保存的比例（以 agentId 作为持久化 key，避免邮箱重名冲突）
+    const persistedRates = loadRates();
+    SUB_AGENTS.forEach((a) => {
+      if (persistedRates[a.agentId] !== undefined) a.shareRate = persistedRates[a.agentId];
+    });
+
+    /* ============== 分成比例颜色等级 ============== */
+    function rateLevel(rate) {
+      if (rate >= 80) return 'high';
+      if (rate >= 40) return 'mid';
+      return 'low';
+    }
+
+    /* ============== 代理级别 tag ============== */
+    function tierTag(tier) {
+      const cls = tier === 'L2' ? 'tier-l2' : 'tier-l3';
+      return `<span class="tier-tag ${cls}">${tier === 'L2' ? '二级代理' : '三级代理'}</span>`;
+    }
+
+    /* ============== 当前角色 + 按角色过滤数据 ============== */
+    function getRole() {
+      try { return localStorage.getItem('zb_agent_role') || 'L1'; }
+      catch (e) { return 'L1'; }
+    }
+    function visibleAgents() {
+      // L1：看到所有下级（L2 + L3）；L2：只看到自己的 L3 下级
+      const role = getRole();
+      if (role === 'L2') return SUB_AGENTS.filter(a => a.tier === 'L3');
+      return SUB_AGENTS.slice();
+    }
+
+    /* ============== 表格渲染 ============== */
+    function renderTable() {
+      const list = visibleAgents();
+      return `
+        <div class="table-wrap">
+          <table class="data-table biz-table">
+            <colgroup>
+              <col style="width:11%">
+              <col style="width:17%">
+              <col style="width:10%">
+              <col style="width:15%">
+              <col style="width:15%">
+              <col style="width:14%">
+              <col style="width:8%">
+              <col style="width:10%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>代理ID</th>
+                <th>代理邮箱</th>
+                <th class="text-center">代理级别</th>
+                <th>成为代理时间</th>
+                <th class="text-right">本月给我贡献的分成金额</th>
+                <th class="text-right">给我贡献的总分成金额</th>
+                <th class="text-right">分成比例</th>
+                <th class="text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${list.length ? list.map((a) => `
+                <tr>
+                  <td><span class="id-tag">${a.agentId}</span></td>
+                  <td><span class="link-text">${a.email}</span></td>
+                  <td class="text-center">${tierTag(a.tier)}</td>
+                  <td class="muted">${a.becomeTime}</td>
+                  <td class="text-right num">${fmtUSDT(a.monthShareAmount)}</td>
+                  <td class="text-right num strong">${fmtUSDT(a.totalShareAmount)}</td>
+                  <td class="text-right">
+                    <span class="rate-pill rate-${rateLevel(a.shareRate)}">${a.shareRate}%</span>
+                  </td>
+                  <td class="text-center">
+                    <button class="t-act" data-act="set-rate" data-id="${a.agentId}">设置分成比例</button>
+                  </td>
+                </tr>
+              `).join('') : emptyRow(8)}
+            </tbody>
+          </table>
+        </div>
+
+        ${pagination(list.length)}
+      `;
+    }
+
+    /* ============== 主框架 ============== */
+    const PAGE_CONTENT = `
+      <div class="page-header">
+        <h1 class="page-title">我的下级代理</h1>
+      </div>
+
+      <div class="card sec-card">
+        <!-- 筛选条 -->
+        <div class="filter-row">
+          <input type="text" class="form-input filter-input" placeholder="代理ID"   id="agentId" />
+          <input type="text" class="form-input filter-input" placeholder="代理邮箱" id="agentEmail" />
+          <div class="date-input-wrap">
+            <svg class="date-ico" viewBox="0 0 24 24" width="16" height="16" fill="none">
+              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6"/>
+              <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.6"/>
+            </svg>
+            <input type="date" class="dt-input" id="dtStart" />
+            <span class="dt-sep">~</span>
+            <input type="date" class="dt-input" id="dtEnd" />
+          </div>
+
+          <div class="filter-actions">
+            <button class="btn-reset" data-act="reset">重置</button>
+            <button class="btn-query" data-act="search">搜索</button>
+          </div>
+        </div>
+
+        <div id="tableArea"></div>
+      </div>
+
+      <!-- 分成设置 弹窗 -->
+      <div class="modal" id="rateModal">
+        <div class="modal-mask" data-act="close-rate"></div>
+        <div class="modal-body modal-rate">
+          <div class="modal-head">
+            <h3>设置分成比例</h3>
+            <button class="modal-close" data-act="close-rate">✕</button>
+          </div>
+          <div class="modal-content">
+            <div class="rate-target">
+              <span class="rate-target-label">下级代理</span>
+              <span class="rate-target-id" id="rateTargetId"></span>
+              <span class="rate-target-email" id="rateTargetEmail"></span>
+            </div>
+
+            <div class="form-line">
+              <label>当前分成比例：<b id="curRate" class="cur-rate">100%</b></label>
+            </div>
+
+            <div class="form-line">
+              <label>新的分成比例 <span class="required">*</span></label>
+              <div class="rate-input-row">
+                <input type="number" id="newRate" min="0" max="100" step="1" value="100" />
+                <span class="rate-suffix">%</span>
+              </div>
+              <input type="range" id="rateSlider" min="0" max="100" step="1" value="100" class="rate-slider" />
+              <div class="rate-marks">
+                <span>0%</span><span>50%</span><span>100%</span>
+              </div>
+            </div>
+
+            <div class="rate-tip">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.6"/>
+                <line x1="12" y1="8" x2="12" y2="13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <circle cx="12" cy="16" r="1" fill="currentColor"/>
+              </svg>
+              <span>
+                您从该下级代理的佣金中分成的百分比。<br/>
+                <b>100%</b> = 您拿走该下级佣金全部；
+                <b>0%</b> = 下级保留全部佣金，您不参与分成。
+              </span>
+            </div>
+          </div>
+          <div class="modal-foot">
+            <button class="btn-outline" data-act="close-rate">取消</button>
+            <button class="btn-primary" id="btnSaveRate">保存</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    /* ============== 公用 ============== */
+    function emptyRow(cols) {
+      return `
+        <tr class="empty-row">
+          <td colspan="${cols}">
+            <div class="empty-cell">
+              <svg viewBox="0 0 64 64" width="48" height="48" class="empty-svg">
+                <rect x="8" y="14" width="48" height="38" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+                <line x1="8" y1="24" x2="56" y2="24" stroke="#cbd5e1" stroke-width="1.5"/>
+                <circle cx="14" cy="19" r="1.4" fill="#cbd5e1"/>
+                <circle cx="18" cy="19" r="1.4" fill="#cbd5e1"/>
+                <circle cx="22" cy="19" r="1.4" fill="#cbd5e1"/>
+                <line x1="16" y1="36" x2="48" y2="36" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+                <line x1="16" y1="42" x2="40" y2="42" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>暂无资料</span>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+    function pagination(total) {
+      const totalPages = Math.max(1, Math.ceil(total / 20));
+      return `
+        <div class="pagination">
+          <span class="page-info">共 <b>${total}</b> 条 / <b>${totalPages}</b> 页</span>
+          <div class="page-size">
+            <select class="form-select page-size-sel">
+              <option>10 条/页</option>
+              <option selected>20 条/页</option>
+              <option>50 条/页</option>
+              <option>100 条/页</option>
+            </select>
+          </div>
+          <div class="page-btns">
+            <button class="page-btn" data-page="first" title="首页">«</button>
+            <button class="page-btn" data-page="prev"  title="上一页">‹</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn" data-page="next"  title="下一页">›</button>
+            <button class="page-btn" data-page="last"  title="末页">»</button>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ============== 弹窗工具 ============== */
+    function openModal(id) { document.getElementById(id).classList.add('show'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+    let editingId = null;
+
+    function openRateModal(agentId) {
+      const agent = SUB_AGENTS.find((a) => a.agentId === agentId);
+      if (!agent) return;
+      editingId = agentId;
+      document.getElementById('rateTargetId').textContent = agent.agentId;
+      document.getElementById('rateTargetEmail').textContent = agent.email;
+      document.getElementById('curRate').textContent = `${agent.shareRate}%`;
+      document.getElementById('newRate').value = agent.shareRate;
+      document.getElementById('rateSlider').value = agent.shareRate;
+      openModal('rateModal');
+    }
+
+    function refresh() {
+      document.getElementById('tableArea').innerHTML = renderTable();
+      bindTableActions();
+    }
+
+    function bindTableActions() {
+      // 设置分成比例 按钮
+      document.querySelectorAll('[data-act="set-rate"]').forEach((b) => {
+        b.addEventListener('click', () => openRateModal(b.dataset.id));
+      });
+      // 翻页
+      document.querySelectorAll('.page-btn').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (b.classList.contains('active')) return;
+          toast('翻页（占位）', 'success');
+        });
+      });
+    }
+
+    /* ============== 交互 ============== */
+    window.onPageReady = function () {
+      refresh();
+
+      // 筛选：重置 / 搜索
+      document.querySelectorAll('.filter-row [data-act]').forEach((b) => {
+        b.addEventListener('click', () => {
+          const act = b.dataset.act;
+          if (act === 'reset') {
+            ['agentId', 'agentEmail', 'dtStart', 'dtEnd'].forEach((id) => {
+              const el = document.getElementById(id);
+              if (el) el.value = '';
+            });
+            toast('已重置筛选', 'success');
+          } else if (act === 'search') {
+            toast('已搜索', 'success');
+          }
+        });
+      });
+
+      // 弹窗关闭
+      document.querySelectorAll('[data-act="close-rate"]').forEach((el) => {
+        el.addEventListener('click', () => closeModal('rateModal'));
+      });
+
+      // 滑块 ↔ 数字输入 双向同步 + 0-100 边界
+      const newRate = document.getElementById('newRate');
+      const slider  = document.getElementById('rateSlider');
+      newRate.addEventListener('input', () => {
+        let v = parseInt(newRate.value, 10);
+        if (isNaN(v)) v = 0;
+        v = Math.max(0, Math.min(100, v));
+        newRate.value = v;
+        slider.value  = v;
+      });
+      slider.addEventListener('input', () => {
+        newRate.value = slider.value;
+      });
+
+      // 保存：0-100 校验 + 持久化（按 agentId）
+      document.getElementById('btnSaveRate').addEventListener('click', () => {
+        const v = parseInt(document.getElementById('newRate').value, 10);
+        if (isNaN(v) || v < 0 || v > 100) {
+          return toast('请输入 0-100 的整数', 'danger');
+        }
+        const agent = SUB_AGENTS.find((a) => a.agentId === editingId);
+        if (!agent) return;
+
+        agent.shareRate = v;
+
+        const rates = loadRates();
+        rates[editingId] = v;
+        saveRates(rates);
+
+        closeModal('rateModal');
+        refresh();
+        toast(`已将「${agent.email}」的分成比例设为 ${v}%`, 'success');
+      });
+    };
+
+    initLayout(PAGE_CONTENT);
+  </script>
+
+  <style>
+    /* —— 筛选 —— */
+    .sec-card { padding: 18px 20px; }
+
+    .filter-row {
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .filter-input { min-width: 180px; max-width: 220px; }
+    .filter-actions { margin-left: auto; display: flex; gap: 8px; }
+
+    .date-input-wrap {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px; background: #fff;
+    }
+    .date-input-wrap:focus-within { border-color: var(--color-primary); }
+    .date-ico { color: var(--color-text-muted); }
+    .dt-input {
+      border: none; outline: none;
+      font-size: var(--fs-body); color: var(--color-text);
+      background: transparent; width: 130px; font-family: inherit;
+    }
+    .dt-sep { color: var(--color-text-muted); padding: 0 2px; }
+
+    .btn-query, .btn-reset {
+      padding: 7px 18px; font-size: var(--fs-body); border-radius: 6px;
+      cursor: pointer; border: none; transition: all 0.15s; font-family: inherit;
+    }
+    .btn-query { color: #fff; background: var(--color-primary); }
+    .btn-query:hover { background: var(--color-primary-hover); }
+    .btn-reset { color: var(--color-text); background: #fff; border: 1px solid var(--color-border); }
+    .btn-reset:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+    /* —— 表 —— */
+    .biz-table {
+      table-layout: fixed;
+      width: 100%;
+    }
+    .biz-table th, .biz-table td {
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 11px 16px;
+    }
+    .muted { color: var(--color-text-muted); }
+    .num {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      color: var(--color-text);
+    }
+    .num.strong { color: var(--color-primary); font-weight: var(--fw-semibold); }
+    .link-text { color: var(--color-text); font-weight: var(--fw-medium); }
+
+    /* 代理ID tag */
+    .id-tag {
+      display: inline-block;
+      padding: 3px 9px;
+      background: #f3e8ff;
+      color: #6d28d9;
+      border-radius: 4px;
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+      letter-spacing: 0.3px;
+    }
+
+    /* 空态行 */
+    .empty-row td { padding: 0; border-bottom: none; }
+    .empty-cell {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      padding: 56px 20px;
+      color: var(--color-text-muted);
+      font-size: var(--fs-meta);
+    }
+    .empty-svg { opacity: 0.7; }
+
+    /* 分页 */
+    .pagination {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 14px; margin-top: 14px;
+    }
+    .page-info { font-size: var(--fs-meta); color: var(--color-text-secondary); }
+    .page-info b { color: var(--color-text); }
+    .page-size-sel {
+      padding: 5px 24px 5px 10px;
+      font-size: var(--fs-body-sm);
+      border-radius: 4px;
+      border: 1px solid var(--color-border);
+      background: #fff; cursor: pointer; font-family: inherit;
+    }
+    .page-btns { display: flex; gap: 4px; }
+    .page-btn {
+      min-width: 28px; height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--color-border);
+      background: #fff; color: var(--color-text);
+      cursor: pointer; border-radius: 4px;
+      font-size: var(--fs-body-sm);
+      transition: all 0.15s; font-family: inherit;
+    }
+    .page-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .page-btn.active {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff; cursor: default;
+    }
+
+    /* —— 代理级别 tag（L2 / L3） —— */
+    .tier-tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 10px;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+    }
+    .tier-l2 { background: rgba(0,200,150,0.12); color: var(--color-primary); }
+    .tier-l3 { background: #e0f2fe; color: #0284c7; }
+
+    /* —— 分成比例 pill —— */
+    .rate-pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+      font-family: ui-monospace, monospace;
+    }
+    .rate-high { background: rgba(0,200,150,0.12); color: var(--color-primary); }
+    .rate-mid  { background: #fef3c7; color: #b45309; }
+    .rate-low  { background: #e5e7eb; color: #4b5563; }
+
+    /* —— 行内操作 —— */
+    .t-act {
+      padding: 4px 12px; font-size: var(--fs-body-sm);
+      border: 1px solid var(--color-primary);
+      background: #fff;
+      color: var(--color-primary);
+      cursor: pointer; border-radius: 4px;
+      transition: all 0.15s;
+      font-family: inherit;
+      font-weight: var(--fw-medium);
+    }
+    .t-act:hover { background: var(--color-primary); color: #fff; }
+
+    /* —— 分成设置 弹窗 —— */
+    .modal {
+      position: fixed; inset: 0;
+      z-index: 999;
+      display: none;
+    }
+    .modal.show { display: flex; align-items: center; justify-content: center; }
+    .modal-mask {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(2px);
+    }
+    .modal-body {
+      position: relative; z-index: 1;
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.2);
+      animation: modalIn 0.2s;
+      overflow: hidden;
+    }
+    .modal-rate { width: 460px; max-width: 92vw; }
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .modal-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 20px;
+      border-bottom: 1px solid #f0f3f7;
+    }
+    .modal-head h3 {
+      font-size: var(--fs-h2);
+      font-weight: var(--fw-bold);
+      color: var(--color-text);
+    }
+    .modal-close {
+      width: 26px; height: 26px;
+      border: none; background: transparent;
+      cursor: pointer; border-radius: 4px;
+      color: var(--color-text-muted);
+      font-size: 16px;
+    }
+    .modal-close:hover { background: #f0f3f7; color: var(--color-text); }
+    .modal-content {
+      padding: 18px 20px;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+
+    .rate-target {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px;
+      background: #fafbfc;
+      border-radius: 6px;
+      flex-wrap: wrap;
+    }
+    .rate-target-label {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+    }
+    .rate-target-id {
+      padding: 2px 8px;
+      background: #f3e8ff;
+      color: #6d28d9;
+      border-radius: 3px;
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+    }
+    .rate-target-email {
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-body);
+      color: var(--color-text);
+      font-weight: var(--fw-semibold);
+    }
+
+    .form-line { display: flex; flex-direction: column; gap: 6px; }
+    .form-line label {
+      font-size: var(--fs-body-sm);
+      color: var(--color-text);
+      font-weight: var(--fw-medium);
+    }
+    .required { color: var(--color-danger); margin-left: 2px; }
+    .cur-rate {
+      color: var(--color-primary);
+      font-family: ui-monospace, monospace;
+    }
+
+    .rate-input-row {
+      position: relative;
+      display: flex; align-items: center;
+    }
+    .rate-input-row input {
+      width: 100%;
+      padding: 9px 36px 9px 12px;
+      font-size: var(--fs-h2);
+      font-weight: var(--fw-bold);
+      color: var(--color-primary);
+      font-family: ui-monospace, monospace;
+      text-align: center;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: #fff;
+    }
+    .rate-input-row input:focus {
+      outline: none; border-color: var(--color-primary);
+    }
+    .rate-suffix {
+      position: absolute; right: 12px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--color-primary);
+      font-size: var(--fs-body);
+      font-weight: var(--fw-semibold);
+      pointer-events: none;
+    }
+
+    /* 滑块 */
+    .rate-slider {
+      width: 100%;
+      margin-top: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #e5e7eb 0%, #fef3c7 50%, rgba(0,200,150,0.4) 100%);
+      outline: none;
+    }
+    .rate-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--color-primary);
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,200,150,0.4);
+    }
+    .rate-slider::-moz-range-thumb {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--color-primary);
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,200,150,0.4);
+    }
+    .rate-marks {
+      display: flex; justify-content: space-between;
+      font-size: var(--fs-tag);
+      color: var(--color-text-muted);
+      margin-top: 2px;
+    }
+
+    .rate-tip {
+      display: flex; gap: 8px; align-items: flex-start;
+      padding: 10px 12px;
+      background: #fff8e6;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      font-size: var(--fs-meta);
+      color: #92400e;
+      line-height: 1.7;
+    }
+    .rate-tip svg { color: #d97706; flex-shrink: 0; margin-top: 2px; }
+    .rate-tip b { color: var(--color-text); }
+
+    /* 弹窗底部 */
+    .modal-foot {
+      padding: 12px 20px;
+      display: flex; justify-content: flex-end; gap: 8px;
+      border-top: 1px solid #f0f3f7;
+      background: #fafbfc;
+    }
+    .modal-foot .btn-outline,
+    .modal-foot .btn-primary {
+      padding: 7px 18px;
+      font-size: var(--fs-body);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+      font-weight: var(--fw-medium);
+      border: 1px solid transparent;
+    }
+    .modal-foot .btn-outline {
+      color: var(--color-text);
+      background: #fff;
+      border-color: var(--color-border);
+    }
+    .modal-foot .btn-outline:hover {
+      color: var(--color-primary);
+      border-color: var(--color-primary);
+    }
+    .modal-foot .btn-primary {
+      color: #fff;
+      background: var(--color-primary);
+    }
+    .modal-foot .btn-primary:hover { background: var(--color-primary-hover); }
+  </style>
+</body>
+</html>

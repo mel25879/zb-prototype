@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>ZB Agent</title>
+  <script>
+    // 已登录 → 进入控制台首页；未登录 → 跳转登录页
+    try {
+      if (localStorage.getItem('zb_logged_in') === '1') {
+        location.replace('rules.html');
+      } else {
+        location.replace('login.html');
+      }
+    } catch (e) {
+      location.replace('login.html');
+    }
+  </script>
+</head>
+<body>
+  <p>正在跳转 ...</p>
+</body>
+</html>

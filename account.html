@@ -1,0 +1,1294 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>我的账户</title>
+  <link rel="stylesheet" href="assets/css/common.css?v=7">
+</head>
+<body data-title="我的账户">
+  <div id="app"></div>
+  <script src="assets/js/common.js?v=7"></script>
+  <script>
+    /* =================================================================
+       我的账户 · 按需求文档实现
+         上：可提现金额（带提币按钮） + 已提现金额
+         下：提币记录（提币单号 / 提币时间 / 提币金额 / 提币地址 / 提币状态）
+       ================================================================= */
+
+    /* ============== Toast ============== */
+    function toast(msg, type) {
+      const t = document.createElement('div');
+      t.className = `toast toast-${type || 'success'}`;
+      t.innerHTML = `<span class="toast-ico">${type === 'danger' ? '✕' : '✓'}</span>${msg}`;
+      document.body.appendChild(t);
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 250); }, 2000);
+    }
+    function fmtUSDT(v) {
+      return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
+    }
+    // 全站统一 USDT
+    const fmtUSD = fmtUSDT;
+
+    /* ============== Mock 数据 ============== */
+    const ACCOUNT = {
+      withdrawable: 52.30,   // 可提币 USDT
+      withdrawn: 245.80,
+      addresses: {},         // 已绑定的提币地址：{ TRC20: 'Txxx...', ERC20: '0x...', BEP20: '0x...' }
+    };
+
+    // 不同链的手续费 + 最小提币量
+    const NETWORK_FEES = {
+      'TRC20': { fee: 1,  min: 10, label: 'USDT-TRC20' },
+      'ERC20': { fee: 8,  min: 30, label: 'USDT-ERC20' },
+      'BEP20': { fee: 1,  min: 10, label: 'USDT-BEP20' },
+    };
+
+    /* ============== 用户手机（mock，实际从用户中心拿）============== */
+    const USER_PHONE = {
+      country: '+86',
+      number: '13812345678',
+      masked: '138****5678',
+    };
+
+    /* ============== 提币地址持久化 ============== */
+    const ADDR_KEY = 'zb_wd_addresses_v1';
+    function loadAddresses() {
+      try {
+        const d = JSON.parse(localStorage.getItem(ADDR_KEY));
+        if (d && typeof d === 'object') return d;
+      } catch (e) {}
+      return {};
+    }
+    function saveAddresses(addrs) {
+      try { localStorage.setItem(ADDR_KEY, JSON.stringify(addrs)); } catch (e) {}
+    }
+    ACCOUNT.addresses = loadAddresses();
+
+    /* ============== Mock：提币记录（按需求文档字段） ============== */
+    // 字段：提币单号 / 提币时间 / 提币金额 / 提币地址 / 提币状态
+    // 状态枚举：提币成功 / 提币失败 / 提币撤销 / 提币审核中
+    const TRANSFER_RECORDS = [
+      { orderNo: 'ITX1020260529831721', time: '2026-05-31 15:34:10', amount: 100.00, address: 'ASDASDASD43534532453FSDFS',        status: '提币成功'   },
+      { orderNo: 'WD20260515001',       time: '2026-05-15 14:23:08', amount:  50.00, address: 'TVj7nQ8xKp2sR3wY5gH9aF6cM4nB1zL8pE', status: '提币成功'   },
+      { orderNo: 'WD20260510007',       time: '2026-05-10 09:35:42', amount: 100.00, address: 'TVj7nQ8xKp2sR3wY5gH9aF6cM4nB1zL8pE', status: '提币成功'   },
+      { orderNo: 'WD20260503009',       time: '2026-05-03 16:18:55', amount:  30.00, address: '0xA1b2C3d4E5f6789012345678901234567890aBcD', status: '提币失败'   },
+      { orderNo: 'WD20260428002',       time: '2026-04-28 11:55:30', amount: 200.00, address: 'TVj7nQ8xKp2sR3wY5gH9aF6cM4nB1zL8pE', status: '提币撤销'   },
+      { orderNo: 'WD20260420015',       time: '2026-04-20 22:30:11', amount:  20.00, address: 'TVj7nQ8xKp2sR3wY5gH9aF6cM4nB1zL8pE', status: '提币审核中' },
+    ];
+
+    /* 提币状态 tag */
+    function resultTag(result) {
+      const map = {
+        '提币成功':   'st-success',
+        '提币失败':   'st-fail',
+        '提币撤销':   'st-cancel',
+        '提币审核中': 'st-pending',
+      };
+      return `<span class="st-tag ${map[result] || ''}">${result}</span>`;
+    }
+
+    /* 提币地址：截断显示（开头 8 + 末尾 6），title 显示完整地址 */
+    function shortAddr(addr) {
+      if (!addr) return '<span class="muted">—</span>';
+      if (addr.length <= 16) return `<span class="addr-text" title="${addr}">${addr}</span>`;
+      return `<span class="addr-text" title="${addr}">${addr.slice(0, 8)}…${addr.slice(-6)}</span>`;
+    }
+
+    /* ============== 主框架 ============== */
+    const PAGE_CONTENT = `
+      <div class="page-header">
+        <h1 class="page-title">我的账户</h1>
+      </div>
+
+      <!-- 顶部：可提现 / 已提现 两张卡 -->
+      <div class="balance-row">
+        <!-- 可提现佣金 -->
+        <div class="bal-card bal-card-pro">
+          <svg class="bal-deco" viewBox="0 0 200 200" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="up-arrow-grad" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0%" stop-color="rgba(0,200,150,0.04)"/>
+                <stop offset="100%" stop-color="rgba(0,200,150,0.22)"/>
+              </linearGradient>
+            </defs>
+            <path d="M120 160 L160 100 L200 100 L140 40 L80 100 L120 100 Z"
+              fill="url(#up-arrow-grad)" />
+          </svg>
+
+          <div class="bal-inner">
+            <div class="bal-label">可提现金额</div>
+            <div class="bal-num bal-num-primary">${fmtUSDT(ACCOUNT.withdrawable)}</div>
+            <div class="bal-actions">
+              <button class="btn-bal-primary" id="btnWithdraw">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/>
+                  <path d="M12 6v12 M8 10l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="rotate(180 12 12)"/>
+                </svg>
+                提币 (USDT)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 已提现金额 -->
+        <div class="bal-card">
+          <div class="bal-inner">
+            <div class="bal-label">已提现金额</div>
+            <div class="bal-num bal-num-muted">${fmtUSDT(ACCOUNT.withdrawn)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 提币记录 -->
+      <div class="card sec-card record-card">
+        <div class="sec-head">
+          <span class="sec-num">01</span>
+          <div class="sec-text">
+            <h3 class="sec-title">提币记录</h3>
+            <p class="sec-sub">查看所有提币申请与结果</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table biz-table">
+            <colgroup>
+              <col style="width:22%">
+              <col style="width:18%">
+              <col style="width:14%">
+              <col style="width:30%">
+              <col style="width:16%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>提币单号</th>
+                <th>提币时间</th>
+                <th class="text-right">提币金额</th>
+                <th>提币地址</th>
+                <th class="text-center">提币状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${TRANSFER_RECORDS.length ? TRANSFER_RECORDS.map((r) => `
+                <tr>
+                  <td class="mono">${r.orderNo}</td>
+                  <td class="muted">${r.time}</td>
+                  <td class="text-right num strong">${fmtUSDT(r.amount)}</td>
+                  <td>${shortAddr(r.address)}</td>
+                  <td class="text-center">${resultTag(r.status)}</td>
+                </tr>
+              `).join('') : emptyRow(5)}
+            </tbody>
+          </table>
+        </div>
+        ${pagination(TRANSFER_RECORDS.length)}
+      </div>
+
+      <!-- 提币弹窗（按截图重做） -->
+      <div class="modal" id="withdrawModal">
+        <div class="modal-mask" data-act="close-wd"></div>
+        <div class="modal-body wd-modal">
+          <button class="wd-close" data-act="close-wd">✕</button>
+
+          <!-- 标题 -->
+          <div class="wd-title">
+            <svg viewBox="0 0 40 14" class="wd-wave"><path d="M2 7 Q 7 2, 12 7 T 22 7 T 32 7 T 38 7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+            <span>提币</span>
+            <svg viewBox="0 0 40 14" class="wd-wave"><path d="M2 7 Q 7 2, 12 7 T 22 7 T 32 7 T 38 7" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+          </div>
+
+          <!-- 表单 -->
+          <div class="wd-form">
+            <div class="wd-row-2">
+              <div class="form-line">
+                <label>提币币种</label>
+                <select id="wdCurrency">
+                  <option>USDT</option>
+                </select>
+              </div>
+              <div class="form-line">
+                <label>提币网络</label>
+                <select id="wdNetwork">
+                  <option value="TRC20">TRC20</option>
+                  <option value="ERC20">ERC20</option>
+                  <option value="BEP20">BEP20</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-line">
+              <div class="label-with-tip">
+                <label>提币金额（USDT）</label>
+                <span class="amt-tip">可提币数量 <b id="wdAvailable">${fmtUSDT(ACCOUNT.withdrawable)}</b></span>
+              </div>
+              <div class="amount-row">
+                <input type="text" id="wdAmount" inputmode="decimal" placeholder="请输入提币金额" />
+                <button type="button" class="btn-max" id="btnMaxAmount">全部</button>
+              </div>
+            </div>
+
+            <!-- 提币地址（未绑定显示去绑定）-->
+            <div class="wd-addr-row">
+              <span class="wd-addr-label">提币地址</span>
+              <div class="wd-addr-value" id="wdAddrValue"></div>
+            </div>
+
+            <div class="wd-divider"></div>
+
+            <!-- 费用明细 -->
+            <div class="wd-summary">
+              <div class="wd-sum-line">
+                <span>手续费</span>
+                <span id="wdFee">0.00 USDT</span>
+              </div>
+              <div class="wd-sum-line">
+                <span>限制</span>
+                <span id="wdLimit" class="muted">(每日最多 5 次)</span>
+              </div>
+              <div class="wd-sum-line wd-sum-final">
+                <span>预计到账</span>
+                <b id="wdReceive">0.00 USDT</b>
+              </div>
+            </div>
+
+            <div class="wd-min-tip">
+              · 单笔操作最低提币金额为 <b id="wdMinTip">10.00 USDT</b>
+            </div>
+          </div>
+
+          <!-- 底部 -->
+          <div class="wd-foot">
+            <div class="wd-foot-amount">
+              <div class="wd-foot-num"><span id="wdFootNum">0.00</span> USDT</div>
+              <div class="wd-foot-eq" id="wdFootEq">= 0 USDT</div>
+            </div>
+            <button class="wd-submit" id="btnSubmitWd">提交</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 绑定提币地址 子弹窗（双步骤向导） -->
+      <div class="modal" id="addrModal">
+        <div class="modal-mask" data-act="close-addr"></div>
+        <div class="modal-body addr-modal">
+          <div class="modal-head">
+            <h3>绑定提币地址</h3>
+            <button class="modal-close" data-act="close-addr">✕</button>
+          </div>
+
+          <!-- 步骤指示器 -->
+          <div class="step-indicator">
+            <div class="step active" data-step="1">
+              <span class="step-num">1</span>
+              <span class="step-text">短信验证码</span>
+            </div>
+            <span class="step-arrow">»</span>
+            <div class="step" data-step="2">
+              <span class="step-num">2</span>
+              <span class="step-text">绑定提币地址</span>
+            </div>
+          </div>
+
+          <!-- Step 1: 短信验证 -->
+          <div class="step-pane" id="stepPane1">
+            <div class="form-line">
+              <label>手机号</label>
+              <div class="phone-input-row">
+                <input type="text" class="phone-code" value="${USER_PHONE.country}" readonly />
+                <input type="text" class="phone-num" value="${USER_PHONE.masked}" readonly />
+              </div>
+            </div>
+
+            <div class="form-line">
+              <label>短信验证码 <span class="required">*</span></label>
+              <div class="sms-code-row">
+                <input type="text" id="smsCode" placeholder="请输入 6 位验证码" maxlength="6" inputmode="numeric" />
+                <button type="button" class="btn-sms" id="btnSendSms">发送</button>
+              </div>
+              <div class="form-error" id="smsError" style="display:none">请输入验证码</div>
+            </div>
+
+            <button class="btn-step-next" id="btnNextStep">下一步</button>
+          </div>
+
+          <!-- Step 2: 绑定地址 -->
+          <div class="step-pane" id="stepPane2" style="display:none">
+            <input type="hidden" id="addrNetwork" />
+            <div class="modal-content">
+              <div class="form-line">
+                <label>提币地址 <span class="required">*</span></label>
+                <input type="text" id="addrInput" placeholder="请粘贴您的 USDT 收款地址" />
+              </div>
+              <div class="risk-tip">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>请仔细核对地址，<b>地址错误将导致资产永久丢失</b></span>
+              </div>
+            </div>
+            <div class="modal-foot">
+              <button class="btn-outline" id="btnBackStep">上一步</button>
+              <button class="btn-primary" id="btnSaveAddr">保存</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    /* ============== 公用：空态 / 分页 ============== */
+    function emptyRow(cols) {
+      return `
+        <tr class="empty-row">
+          <td colspan="${cols}">
+            <div class="empty-cell">
+              <svg viewBox="0 0 64 64" width="48" height="48" class="empty-svg">
+                <rect x="8" y="14" width="48" height="38" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+                <line x1="8" y1="24" x2="56" y2="24" stroke="#cbd5e1" stroke-width="1.5"/>
+                <circle cx="14" cy="19" r="1.4" fill="#cbd5e1"/>
+                <circle cx="18" cy="19" r="1.4" fill="#cbd5e1"/>
+                <circle cx="22" cy="19" r="1.4" fill="#cbd5e1"/>
+                <line x1="16" y1="36" x2="48" y2="36" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+                <line x1="16" y1="42" x2="40" y2="42" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>暂无资料</span>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+    function pagination(total) {
+      const totalPages = Math.max(1, Math.ceil(total / 20));
+      return `
+        <div class="pagination">
+          <span class="page-info">共 <b>${total}</b> 条 / <b>${totalPages}</b> 页</span>
+          <div class="page-size">
+            <select class="form-select page-size-sel">
+              <option>10 条/页</option>
+              <option selected>20 条/页</option>
+              <option>50 条/页</option>
+              <option>100 条/页</option>
+            </select>
+          </div>
+          <div class="page-btns">
+            <button class="page-btn" data-page="first" title="首页">«</button>
+            <button class="page-btn" data-page="prev" title="上一页">‹</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn" data-page="next" title="下一页">›</button>
+            <button class="page-btn" data-page="last" title="末页">»</button>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ============== 弹窗工具 ============== */
+    function openModal(id) {
+      document.getElementById(id).classList.add('show');
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    /* ============== 地址校验（按网络）============== */
+    function validateAddress(network, addr) {
+      if (!addr) return false;
+      if (network === 'TRC20') return /^T[A-Za-z0-9]{33}$/.test(addr);
+      if (network === 'ERC20') return /^0x[a-fA-F0-9]{40}$/.test(addr);
+      if (network === 'BEP20') return /^0x[a-fA-F0-9]{40}$/.test(addr);
+      return false;
+    }
+
+    /* ============== 提币地址行渲染 ============== */
+    function renderAddrCell() {
+      const net = document.getElementById('wdNetwork').value;
+      const addr = ACCOUNT.addresses[net];
+      const el = document.getElementById('wdAddrValue');
+      if (addr) {
+        el.innerHTML = `
+          <span class="wd-addr-text" title="${addr}">${addr.slice(0, 6)}…${addr.slice(-6)}</span>
+          <button class="btn-bind-link" data-act="open-addr">更换</button>
+        `;
+      } else {
+        el.innerHTML = `
+          <span class="wd-addr-empty">未绑定</span>
+          <button class="btn-bind-link primary" data-act="open-addr">去绑定</button>
+        `;
+      }
+      // 绑定按钮事件
+      el.querySelector('[data-act="open-addr"]').addEventListener('click', openAddrModal);
+    }
+
+    /* ============== 实时刷新金额明细 ============== */
+    function refreshSummary() {
+      const net = document.getElementById('wdNetwork').value;
+      const amtStr = document.getElementById('wdAmount').value;
+      const amt = parseFloat(amtStr) || 0;
+      const fee = NETWORK_FEES[net].fee;
+      const min = NETWORK_FEES[net].min;
+      const receive = Math.max(0, amt - fee);
+
+      document.getElementById('wdFee').textContent     = fmtUSDT(fee);
+      document.getElementById('wdReceive').textContent = fmtUSDT(receive);
+      document.getElementById('wdMinTip').textContent  = fmtUSDT(min);
+      document.getElementById('wdFootNum').textContent = amt.toFixed(2);
+      document.getElementById('wdFootEq').textContent  = `= ${receive.toFixed(2)} USDT 实际到账`;
+    }
+
+    /* ============== 重置提币表单 ============== */
+    function resetWdForm() {
+      document.getElementById('wdAmount').value = '';
+      document.getElementById('wdNetwork').value = 'TRC20';
+      renderAddrCell();
+      refreshSummary();
+    }
+
+    /* ============== 打开 / 保存 绑定地址（双步骤向导） ============== */
+    function openAddrModal() {
+      const net = document.getElementById('wdNetwork').value;
+      document.getElementById('addrNetwork').value = net;
+      const existing = ACCOUNT.addresses[net] || '';
+      document.getElementById('addrInput').value = existing;
+      // 重置到 Step 1
+      showStep(1);
+      document.getElementById('smsCode').value = '';
+      document.getElementById('smsError').style.display = 'none';
+      resetSmsBtn();
+      openModal('addrModal');
+    }
+
+    function showStep(n) {
+      document.querySelectorAll('#addrModal .step').forEach((el) => {
+        el.classList.toggle('active', parseInt(el.dataset.step, 10) === n);
+        el.classList.toggle('done', parseInt(el.dataset.step, 10) < n);
+      });
+      document.getElementById('stepPane1').style.display = n === 1 ? 'block' : 'none';
+      document.getElementById('stepPane2').style.display = n === 2 ? 'block' : 'none';
+    }
+
+    /* —— 短信验证码倒计时 —— */
+    let smsTimer = null;
+    function startSmsCountdown() {
+      const btn = document.getElementById('btnSendSms');
+      let left = 60;
+      btn.disabled = true;
+      btn.classList.add('disabled');
+      btn.textContent = `${left}s`;
+      smsTimer = setInterval(() => {
+        left--;
+        if (left <= 0) {
+          resetSmsBtn();
+        } else {
+          btn.textContent = `${left}s`;
+        }
+      }, 1000);
+    }
+    function resetSmsBtn() {
+      if (smsTimer) { clearInterval(smsTimer); smsTimer = null; }
+      const btn = document.getElementById('btnSendSms');
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('disabled');
+        btn.textContent = '发送';
+      }
+    }
+
+    window.onPageReady = function () {
+      // 提币按钮 → 直接打开提币弹窗（地址未绑在弹窗内显示"未绑定 [去绑定]"）
+      document.getElementById('btnWithdraw').addEventListener('click', () => {
+        openModal('withdrawModal');
+        renderAddrCell();
+        refreshSummary();
+      });
+
+      // 弹窗关闭
+      document.querySelectorAll('[data-act="close-wd"]').forEach((el) => {
+        el.addEventListener('click', () => {
+          closeModal('withdrawModal');
+          resetWdForm();
+        });
+      });
+      document.querySelectorAll('[data-act="close-addr"]').forEach((el) => {
+        el.addEventListener('click', () => closeModal('addrModal'));
+      });
+
+      // 切换网络 → 刷新手续费 + 地址显示
+      document.getElementById('wdNetwork').addEventListener('change', () => {
+        renderAddrCell();
+        refreshSummary();
+      });
+
+      // 金额输入
+      const wdAmount = document.getElementById('wdAmount');
+      wdAmount.addEventListener('input', () => {
+        wdAmount.value = wdAmount.value
+          .replace(/[^\d.]/g, '')
+          .replace(/(\..*)\./g, '$1')
+          .replace(/^(\d+)(\.\d{0,8}).*$/, '$1$2');
+        refreshSummary();
+      });
+
+      // 全部
+      document.getElementById('btnMaxAmount').addEventListener('click', () => {
+        wdAmount.value = ACCOUNT.withdrawable.toFixed(2);
+        refreshSummary();
+      });
+
+      // 发送短信验证码
+      document.getElementById('btnSendSms').addEventListener('click', () => {
+        toast(`验证码已发送至 ${USER_PHONE.masked}`, 'success');
+        startSmsCountdown();
+      });
+
+      // 验证码输入：只允许数字 + 清错误提示
+      const smsCodeInput = document.getElementById('smsCode');
+      smsCodeInput.addEventListener('input', () => {
+        smsCodeInput.value = smsCodeInput.value.replace(/\D/g, '').slice(0, 6);
+        document.getElementById('smsError').style.display = 'none';
+      });
+
+      // 下一步：校验验证码 → 进入 Step 2
+      document.getElementById('btnNextStep').addEventListener('click', () => {
+        const code = smsCodeInput.value.trim();
+        if (!code) {
+          document.getElementById('smsError').style.display = 'block';
+          smsCodeInput.focus();
+          return;
+        }
+        if (!/^\d{6}$/.test(code)) {
+          return toast('请输入 6 位数字验证码', 'danger');
+        }
+        // 通过校验，进入 Step 2
+        showStep(2);
+      });
+
+      // 上一步
+      document.getElementById('btnBackStep').addEventListener('click', () => {
+        showStep(1);
+      });
+
+      // 保存地址
+      document.getElementById('btnSaveAddr').addEventListener('click', () => {
+        const net = document.getElementById('addrNetwork').value;
+        const addr = document.getElementById('addrInput').value.trim();
+        if (!addr) return toast('请填写提币地址', 'danger');
+        if (!validateAddress(net, addr)) {
+          return toast(`${net} 地址格式不正确`, 'danger');
+        }
+        ACCOUNT.addresses[net] = addr;
+        saveAddresses(ACCOUNT.addresses);
+        closeModal('addrModal');
+        renderAddrCell();
+        toast(`已绑定 ${net} 提币地址`, 'success');
+      });
+
+      // 提交提币
+      document.getElementById('btnSubmitWd').addEventListener('click', () => {
+        const network = document.getElementById('wdNetwork').value;
+        const addr    = ACCOUNT.addresses[network];
+        const amt     = parseFloat(document.getElementById('wdAmount').value) || 0;
+        const cfg     = NETWORK_FEES[network];
+
+        if (!addr) return toast('请先绑定提币地址', 'danger');
+        if (amt <= 0) return toast('请输入提币数量', 'danger');
+        if (amt < cfg.min) return toast(`最小提币数量为 ${cfg.min} USDT`, 'danger');
+        if (amt > ACCOUNT.withdrawable) return toast('提币数量超过可提币余额', 'danger');
+        if (amt <= cfg.fee) return toast('提币数量需大于手续费', 'danger');
+
+        closeModal('withdrawModal');
+        resetWdForm();
+        toast(`提币申请已提交（${fmtUSDT(amt)} 到 ${addr.slice(0,6)}…${addr.slice(-4)}），等待审核`, 'success');
+      });
+
+      // 分页
+      document.querySelectorAll('.page-btn').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (b.classList.contains('active')) return;
+          toast('翻页（占位）', 'success');
+        });
+      });
+    };
+
+    initLayout(PAGE_CONTENT);
+  </script>
+
+  <style>
+    /* —— 顶部 2 卡 —— */
+    .balance-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .bal-card {
+      background: #fff;
+      border-radius: var(--radius-md);
+      padding: 22px 24px;
+      box-shadow: var(--shadow-sm);
+      position: relative;
+      overflow: hidden;
+      min-height: 130px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .bal-card-pro {
+      background: linear-gradient(135deg, #f6fdfa 0%, #ffffff 60%);
+      border: 1px solid #e0f5ec;
+    }
+    .bal-deco {
+      position: absolute;
+      right: -10px; bottom: -10px;
+      width: 160px; height: 160px;
+      pointer-events: none;
+    }
+    .bal-inner { position: relative; z-index: 1; }
+    .bal-label {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .bal-num {
+      font-size: 34px;
+      font-weight: var(--fw-bold);
+      letter-spacing: -0.5px;
+      line-height: 1.2;
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+    }
+    .bal-num-primary { color: var(--color-primary); }
+    .bal-num-muted { color: var(--color-text); }
+
+    .bal-actions {
+      margin-top: 14px;
+      display: flex; gap: 8px;
+    }
+    .btn-bal-primary {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px;
+      font-size: var(--fs-body);
+      font-weight: var(--fw-medium);
+      color: #fff;
+      background: var(--color-primary);
+      border: none; border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+      box-shadow: 0 2px 8px rgba(0,200,150,0.25);
+    }
+    .btn-bal-primary:hover {
+      background: var(--color-primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,200,150,0.3);
+    }
+
+    /* —— 转账记录 —— */
+    .record-card { padding: 20px 22px; }
+
+    .sec-head {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #f0f3f7;
+    }
+    .sec-num {
+      flex-shrink: 0;
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #00c896 0%, #00a87d 100%);
+      color: #fff; font-size: var(--fs-meta); font-weight: var(--fw-bold);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 6px rgba(0,200,150,0.25);
+    }
+    .sec-title { font-size: var(--fs-h2); font-weight: var(--fw-bold); color: var(--color-text); }
+    .sec-sub { font-size: var(--fs-meta); color: var(--color-text-secondary); margin-top: 1px; }
+
+    /* —— 表格 —— */
+    .biz-table {
+      table-layout: fixed;
+      width: 100%;
+    }
+    .biz-table th, .biz-table td {
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 11px 16px;
+    }
+    .muted { color: var(--color-text-muted); }
+    .mono {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      font-size: var(--fs-body-sm);
+      color: var(--color-text);
+    }
+    .num {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      color: var(--color-text);
+    }
+    .num.strong { color: var(--color-primary); font-weight: var(--fw-semibold); }
+
+    /* 执行结果 tag */
+    .st-tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 10px;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+    }
+    .st-success { background: #dcfce7; color: #15803d; }
+    .st-fail    { background: #fee2e2; color: #b91c1c; }
+    .st-cancel  { background: #e5e7eb; color: #4b5563; }
+    .st-pending { background: #fef3c7; color: #b45309; }
+
+    /* —— 空态 + 分页 —— */
+    .empty-row td { padding: 0; border-bottom: none; }
+    .empty-cell {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      padding: 56px 20px;
+      color: var(--color-text-muted);
+      font-size: var(--fs-meta);
+    }
+    .empty-svg { opacity: 0.7; }
+
+    .pagination {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 14px; margin-top: 14px;
+    }
+    .page-info { font-size: var(--fs-meta); color: var(--color-text-secondary); }
+    .page-info b { color: var(--color-text); }
+    .page-size-sel {
+      padding: 5px 24px 5px 10px;
+      font-size: var(--fs-body-sm);
+      border-radius: 4px;
+      border: 1px solid var(--color-border);
+      background: #fff; cursor: pointer; font-family: inherit;
+    }
+    .page-btns { display: flex; gap: 4px; }
+    .page-btn {
+      min-width: 28px; height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--color-border);
+      background: #fff; color: var(--color-text);
+      cursor: pointer; border-radius: 4px;
+      font-size: var(--fs-body-sm);
+      transition: all 0.15s; font-family: inherit;
+    }
+    .page-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .page-btn.active {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff; cursor: default;
+    }
+
+    /* —————————————————————————————————————— 弹窗通用 */
+    .modal {
+      position: fixed; inset: 0;
+      z-index: 999;
+      display: none;
+    }
+    .modal.show { display: flex; align-items: center; justify-content: center; }
+    .modal-mask {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.4);
+      backdrop-filter: blur(2px);
+    }
+    .modal-body {
+      position: relative; z-index: 1;
+      background: #fff; border-radius: 14px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.18);
+      animation: modalIn 0.2s;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* —————————————————————————————————————— 提币弹窗（自带头/尾，无 modal-head/foot） */
+    .wd-modal {
+      width: 540px; max-width: 92vw;
+      overflow: hidden;
+      padding: 0;
+    }
+    .wd-close {
+      position: absolute; top: 14px; right: 14px;
+      width: 28px; height: 28px;
+      border: none; background: transparent;
+      cursor: pointer; border-radius: 4px;
+      color: rgba(255,255,255,0.85);
+      font-size: 16px;
+      z-index: 2;
+    }
+    .wd-close:hover { background: rgba(255,255,255,0.18); color: #fff; }
+
+    /* 标题（带绿色渐变背景 + 装饰波浪）*/
+    .wd-title {
+      position: relative;
+      padding: 26px 20px 20px;
+      background: linear-gradient(135deg, #00c896 0%, #00a87d 70%, #009470 100%);
+      color: #fff;
+      text-align: center;
+      display: flex; align-items: center; justify-content: center;
+      gap: 14px;
+      font-size: var(--fs-h2);
+      font-weight: var(--fw-bold);
+      letter-spacing: 4px;
+    }
+    .wd-wave {
+      width: 40px; height: 14px;
+      color: rgba(255,255,255,0.8);
+    }
+
+    /* 表单 */
+    .wd-form { padding: 20px 22px 4px; }
+    .wd-row-2 {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      margin-bottom: 14px;
+    }
+    .form-line { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+    .form-line label {
+      font-size: var(--fs-body-sm);
+      color: var(--color-text);
+      font-weight: var(--fw-medium);
+    }
+    .required { color: var(--color-danger); margin-left: 2px; }
+    .form-line input,
+    .form-line select {
+      padding: 9px 12px;
+      font-size: var(--fs-body);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      transition: border-color 0.15s;
+      font-family: inherit;
+      background: #fff;
+    }
+    .form-line input:focus,
+    .form-line select:focus {
+      outline: none;
+      border-color: var(--color-primary);
+    }
+    .label-with-tip {
+      display: flex; justify-content: space-between; align-items: baseline;
+    }
+    .amt-tip {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+    }
+    .amt-tip b {
+      color: var(--color-primary);
+      font-family: ui-monospace, monospace;
+      font-weight: var(--fw-semibold);
+      margin-left: 4px;
+    }
+
+    /* 数量输入行 */
+    .amount-row {
+      position: relative;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .amount-row input {
+      flex: 1;
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      font-size: var(--fs-h3);
+      font-weight: var(--fw-semibold);
+    }
+    .btn-max {
+      padding: 0 14px;
+      height: 38px;
+      font-size: var(--fs-body-sm);
+      color: var(--color-primary);
+      background: #fff;
+      border: 1px solid var(--color-primary);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+      font-weight: var(--fw-medium);
+      flex-shrink: 0;
+    }
+    .btn-max:hover { background: var(--color-primary); color: #fff; }
+
+    /* —— 提币地址行 —— */
+    .wd-addr-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 14px;
+      background: #fafbfc;
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+    .wd-addr-label {
+      font-size: var(--fs-body-sm);
+      color: var(--color-text);
+      font-weight: var(--fw-medium);
+    }
+    .wd-addr-value {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .wd-addr-empty {
+      color: var(--color-text-muted);
+      font-size: var(--fs-body-sm);
+    }
+    .wd-addr-text {
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-body-sm);
+      color: var(--color-text);
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .btn-bind-link {
+      padding: 4px 12px;
+      font-size: var(--fs-body-sm);
+      background: #fff;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-secondary);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+      font-weight: var(--fw-medium);
+    }
+    .btn-bind-link:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+    .btn-bind-link.primary {
+      background: var(--color-primary);
+      color: #fff;
+      border-color: var(--color-primary);
+    }
+    .btn-bind-link.primary:hover {
+      background: var(--color-primary-hover);
+      border-color: var(--color-primary-hover);
+    }
+
+    .wd-divider {
+      height: 1px;
+      background: var(--color-border);
+      margin: 6px 0 14px;
+    }
+
+    /* 费用明细 */
+    .wd-summary {
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .wd-sum-line {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: var(--fs-body-sm);
+      color: var(--color-text-secondary);
+    }
+    .wd-sum-line .muted { color: var(--color-text-muted); font-size: var(--fs-meta); }
+    .wd-sum-line span:last-child,
+    .wd-sum-line b {
+      font-family: ui-monospace, monospace;
+      color: var(--color-text);
+    }
+    .wd-sum-final b {
+      color: var(--color-primary);
+      font-weight: var(--fw-bold);
+      font-size: var(--fs-body);
+    }
+
+    .wd-min-tip {
+      font-size: var(--fs-meta);
+      color: var(--color-text-muted);
+      margin-top: 12px;
+      padding-bottom: 4px;
+    }
+    .wd-min-tip b {
+      color: var(--color-text);
+      font-family: ui-monospace, monospace;
+      margin-left: 2px;
+    }
+
+    /* 底部 */
+    .wd-foot {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px 22px;
+      background: #fafbfc;
+      border-top: 1px solid #f0f3f7;
+    }
+    .wd-foot-amount {
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .wd-foot-num {
+      font-size: 22px;
+      font-weight: var(--fw-bold);
+      color: var(--color-primary);
+      font-family: ui-monospace, monospace;
+      letter-spacing: -0.3px;
+    }
+    .wd-foot-eq {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+      font-family: ui-monospace, monospace;
+    }
+    .wd-submit {
+      padding: 10px 32px;
+      font-size: var(--fs-body);
+      font-weight: var(--fw-semibold);
+      color: #fff;
+      background: var(--color-primary);
+      border: none; border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+      box-shadow: 0 4px 12px rgba(0,200,150,0.3);
+    }
+    .wd-submit:hover {
+      background: var(--color-primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0,200,150,0.4);
+    }
+
+    /* —————————————————————————————————————— 绑定地址子弹窗（双步骤向导） */
+    .addr-modal { width: 480px; max-width: 92vw; }
+
+    /* 步骤指示器 */
+    .step-indicator {
+      display: flex; align-items: center; justify-content: center;
+      gap: 12px;
+      padding: 16px 20px 18px;
+      background: #fafbfc;
+      border-bottom: 1px solid #f0f3f7;
+    }
+    .step {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: transparent;
+      font-size: var(--fs-body);
+      color: var(--color-text-muted);
+      transition: all 0.2s;
+    }
+    .step .step-num {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      color: #6b7280;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-bold);
+    }
+    .step.active {
+      background: rgba(0,200,150,0.1);
+      color: var(--color-primary);
+      font-weight: var(--fw-semibold);
+    }
+    .step.active .step-num,
+    .step.done .step-num {
+      background: var(--color-primary);
+      color: #fff;
+    }
+    .step.done { color: var(--color-text); }
+    .step-arrow {
+      color: var(--color-primary);
+      font-size: 18px;
+      font-weight: var(--fw-bold);
+    }
+
+    /* 步骤面板 */
+    .step-pane { padding: 18px 20px; }
+
+    /* 手机号行（国家码 + 号码 拼合）*/
+    .phone-input-row {
+      display: flex;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #fafbfc;
+    }
+    .phone-code {
+      width: 72px;
+      padding: 9px 10px;
+      border: none;
+      border-right: 1px solid var(--color-border);
+      background: #fff;
+      font-size: var(--fs-body);
+      color: var(--color-text);
+      text-align: center;
+      font-family: ui-monospace, monospace;
+      cursor: not-allowed;
+    }
+    .phone-num {
+      flex: 1;
+      padding: 9px 12px;
+      border: none;
+      background: transparent;
+      font-size: var(--fs-body);
+      color: var(--color-text);
+      font-family: ui-monospace, monospace;
+      cursor: not-allowed;
+    }
+
+    /* 验证码行 */
+    .sms-code-row { display: flex; gap: 8px; }
+    .sms-code-row input {
+      flex: 1;
+      padding: 9px 12px;
+      font-size: var(--fs-body);
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      font-family: inherit;
+    }
+    .sms-code-row input:focus {
+      outline: none; border-color: var(--color-primary);
+    }
+    .btn-sms {
+      padding: 0 18px;
+      font-size: var(--fs-body-sm);
+      color: var(--color-primary);
+      background: #fff;
+      border: 1px solid var(--color-primary);
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+      font-family: inherit;
+      font-weight: var(--fw-medium);
+    }
+    .btn-sms:hover { background: var(--color-primary); color: #fff; }
+    .btn-sms.disabled,
+    .btn-sms:disabled {
+      color: var(--color-text-muted);
+      border-color: var(--color-border);
+      cursor: not-allowed;
+      background: #fafbfc;
+    }
+    .btn-sms.disabled:hover,
+    .btn-sms:disabled:hover {
+      color: var(--color-text-muted);
+      background: #fafbfc;
+    }
+
+    /* 错误提示 */
+    .form-error {
+      margin-top: 4px;
+      font-size: var(--fs-meta);
+      color: var(--color-danger);
+    }
+    .sms-code-row input:invalid + .btn-sms { /* placeholder */ }
+
+    /* Step 1 下一步大按钮 */
+    .btn-step-next {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      font-size: var(--fs-body);
+      font-weight: var(--fw-semibold);
+      color: #fff;
+      background: var(--color-primary);
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+      box-shadow: 0 4px 12px rgba(0,200,150,0.25);
+    }
+    .btn-step-next:hover {
+      background: var(--color-primary-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(0,200,150,0.35);
+    }
+
+    .modal-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 20px;
+      border-bottom: 1px solid #f0f3f7;
+    }
+    .modal-head h3 {
+      font-size: var(--fs-h2);
+      font-weight: var(--fw-bold);
+      color: var(--color-text);
+    }
+    .modal-close {
+      width: 26px; height: 26px;
+      border: none; background: transparent;
+      cursor: pointer; border-radius: 4px;
+      color: var(--color-text-muted);
+      font-size: 16px;
+    }
+    .modal-close:hover { background: #f0f3f7; color: var(--color-text); }
+    .modal-content { padding: 18px 20px; }
+
+    .modal-content .form-line input#addrInput {
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-body-sm);
+    }
+    .modal-content .form-line input#addrNetwork {
+      background: #fafbfc;
+      color: var(--color-text-secondary);
+      cursor: not-allowed;
+    }
+
+    /* 风险提示 */
+    .risk-tip {
+      display: flex; gap: 8px;
+      padding: 10px 12px;
+      background: #fff8e6;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      font-size: var(--fs-meta);
+      color: #92400e;
+      line-height: 1.6;
+    }
+    .risk-tip svg { color: #d97706; flex-shrink: 0; margin-top: 2px; }
+    .risk-tip b { color: var(--color-danger); }
+
+    /* 子弹窗底部 */
+    .modal-foot {
+      padding: 12px 20px;
+      display: flex; justify-content: flex-end; gap: 8px;
+      border-top: 1px solid #f0f3f7;
+      background: #fafbfc;
+    }
+    .modal-foot .btn-outline,
+    .modal-foot .btn-primary {
+      padding: 7px 18px;
+      font-size: var(--fs-body);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: inherit;
+      font-weight: var(--fw-medium);
+      border: 1px solid transparent;
+    }
+    .modal-foot .btn-outline {
+      color: var(--color-text);
+      background: #fff;
+      border-color: var(--color-border);
+    }
+    .modal-foot .btn-outline:hover {
+      color: var(--color-primary);
+      border-color: var(--color-primary);
+    }
+    .modal-foot .btn-primary {
+      color: #fff;
+      background: var(--color-primary);
+    }
+    .modal-foot .btn-primary:hover { background: var(--color-primary-hover); }
+
+    /* —— 提币地址（截断显示，hover 可看完整 title）—— */
+    .addr-text {
+      display: inline-block;
+      max-width: 100%;
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      font-size: var(--fs-body-sm);
+      color: var(--color-text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      letter-spacing: 0.2px;
+    }
+
+    /* —— 响应式 —— */
+    @media (max-width: 900px) {
+      .balance-row { grid-template-columns: 1fr; }
+      .modal-body-form { width: 90vw; }
+    }
+  </style>
+</body>
+</html>

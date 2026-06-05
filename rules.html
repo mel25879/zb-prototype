@@ -1,0 +1,1364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>规则说明</title>
+  <link rel="stylesheet" href="assets/css/common.css?v=7">
+</head>
+<body data-title="规则说明">
+  <div id="app"></div>
+  <script src="assets/js/common.js?v=7"></script>
+  <script>
+    /* =================================================================
+       规则说明页 · v5
+       结构（按需求文档）：
+         1. 顶部：角色切换 + 测试代理开关
+         2. 测试代理提示条（仅测试代理可见，显示到期日）
+         3. Hero 横幅：当月返佣比例
+         4. 运营信息卡（邀请链接 / 邀请码 / L1 额外指标）
+         5. 主卡：佣金计算规则 + 月度考核标准
+       字段差异：
+         L1 显示：邀请链接 / 邀请码 / 累计有效邀请人数 / 当月总交易额
+         L2 显示：邀请链接 / 邀请码（不展示后两个 KPI）
+       ================================================================= */
+
+    /* ============== Toast（页面级反馈：测试开关、侧栏复制等共用） ============== */
+    function toast(msg, type) {
+      const t = document.createElement('div');
+      t.className = `toast toast-${type || 'success'}`;
+      t.innerHTML = `<span class="toast-ico">${type === 'danger' ? '✕' : '✓'}</span>${msg}`;
+      document.body.appendChild(t);
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 250); }, 2000);
+    }
+
+    /* ============== Mock 数据 ============== */
+    // AGENT_INFO 已在 common.js 中定义（全站共享），此处直接引用
+    // 字段：link / code / validInvite / monthVolume / rebateRate / hasAssessmentHistory
+
+    /* ============== Mock 数据：月度考核（仅 L1 用） ============== */
+    // period       - 考核周期（月份）
+    // validInvite  - 当月有效邀请人数
+    // monthVolume  - 当月总交易额（USDT）
+    // statTime     - 统计时间
+    // rate         - 考核获取的下月返佣比例
+    const ASSESSMENT_DATA = [
+      { period: '2026-05', validInvite: 56, monthVolume: 50000, statTime: '2026-06-01 00:00:10', rate: '55%' },
+      { period: '2026-04', validInvite: 20, monthVolume: 50000, statTime: '2026-05-01 00:00:10', rate: '45%' },
+      { period: '2026-03', validInvite: 18, monthVolume: 28000, statTime: '2026-04-01 00:00:10', rate: '45%' },
+      { period: '2026-02', validInvite: 12, monthVolume: 15000, statTime: '2026-03-01 00:00:10', rate: '45%' },
+      { period: '2026-01', validInvite:  8, monthVolume:  9000, statTime: '2026-02-01 00:00:10', rate: '45%' },
+    ];
+
+    // 快照 ①：有效邀请人（按周期分组）
+    // 字段：email / registerTime / cumulativeDeposit / cumulativeOpenVolume / monthOpenVolume
+    const INVITE_SNAPSHOT = {
+      '2026-05': [
+        { email: '202605285@qq.com', registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 120,  cumulativeOpenVolume: 7800,  monthOpenVolume: 5000 },
+        { email: '202605286@qq.com', registerTime: '2026-04-31 15:34:10', cumulativeDeposit: 80,   cumulativeOpenVolume: 6200,  monthOpenVolume: 1000 },
+        { email: '202605287@qq.com', registerTime: '2026-05-15 09:21:00', cumulativeDeposit: 350,  cumulativeOpenVolume: 12300, monthOpenVolume: 8500 },
+        { email: '202605288@qq.com', registerTime: '2026-03-12 18:42:30', cumulativeDeposit: 180,  cumulativeOpenVolume: 9800,  monthOpenVolume: 1500 },
+      ],
+      '2026-04': [
+        { email: '202604121@qq.com', registerTime: '2026-04-05 12:30:00', cumulativeDeposit: 220,  cumulativeOpenVolume: 14500, monthOpenVolume: 6000 },
+        { email: '202604122@qq.com', registerTime: '2026-03-20 09:00:00', cumulativeDeposit: 500,  cumulativeOpenVolume: 23400, monthOpenVolume: 2400 },
+      ],
+      '2026-03': [],
+      '2026-02': [],
+      '2026-01': [],
+    };
+
+    // 快照 ②：当月总交易额（按周期分组）
+    // 说明：代理邀请链路上所有人（含代理自己）的开仓交易额
+    const VOLUME_SNAPSHOT = {
+      '2026-05': [
+        { email: '代理本人',         inviter: '—',         openVolume: 12000, openTime: '2026-05-12 10:21:00', orderNo: 'TX20260512080' },
+        { email: '202605285@qq.com', inviter: '代理本人',  openVolume:  5000, openTime: '2026-05-30 21:10:00', orderNo: 'TX20260530021' },
+        { email: '202605286@qq.com', inviter: '代理本人',  openVolume:  3000, openTime: '2026-05-18 13:08:00', orderNo: 'TX20260518016' },
+        { email: '202605287@qq.com', inviter: '代理本人',  openVolume:  8500, openTime: '2026-05-25 14:55:00', orderNo: 'TX20260525033' },
+        { email: '202605288@qq.com', inviter: '代理本人',  openVolume: 21500, openTime: '2026-05-10 08:30:00', orderNo: 'TX20260510002' },
+      ],
+      '2026-04': [
+        { email: '代理本人',         inviter: '—',         openVolume:  8000, openTime: '2026-04-15 11:00:00', orderNo: 'TX20260415055' },
+        { email: '202604121@qq.com', inviter: '代理本人',  openVolume:  6000, openTime: '2026-04-18 14:30:00', orderNo: 'TX20260418017' },
+      ],
+      '2026-03': [],
+      '2026-02': [],
+      '2026-01': [],
+    };
+
+    /* ============== 月度考核：表格 + 快照 渲染函数 ============== */
+    function fmtUSDT(v) {
+      return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
+    }
+    /**
+     * 把 "YYYY-MM" 转成考核周期对象：包含 月标签 + 起止日期范围短串
+     * 例：'2026-05' → { month: '2026-05', range: '05-01 ~ 05-31' }
+     */
+    function formatPeriodRange(period) {
+      const [y, m] = period.split('-').map(Number);
+      // 用 new Date(y, m, 0) 取到上一个月的"最后一天" = 当前月的最大天数
+      const lastDay = new Date(y, m, 0).getDate();
+      const mm = String(m).padStart(2, '0');
+      const dd = String(lastDay).padStart(2, '0');
+      return { month: period, range: `${mm}-01 ~ ${mm}-${dd}` };
+    }
+    function asmtEmptyRow(cols) {
+      return `<tr class="empty-row"><td colspan="${cols}" class="empty-cell">暂无资料</td></tr>`;
+    }
+
+    // 主表（带"快照"按钮）
+    function renderAssessmentTable() {
+      return `
+        <table class="data-table biz-table asmt-table">
+          <colgroup>
+            <col style="width:18%">
+            <col style="width:15%">
+            <col style="width:24%">
+            <col style="width:24%">
+            <col style="width:19%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>考核周期</th>
+              <th class="text-right">有效邀请人</th>
+              <th class="text-right">当月总交易额</th>
+              <th>统计时间</th>
+              <th class="text-right">考核获取的返佣比例</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ASSESSMENT_DATA.length ? ASSESSMENT_DATA.map((r) => {
+              const p = formatPeriodRange(r.period);
+              return `
+                <tr>
+                  <td>
+                    <div class="period-cell">
+                      <span class="period-tag">${p.month}</span>
+                      <span class="period-range">${p.range}</span>
+                    </div>
+                  </td>
+                  <td class="text-right">
+                    <button class="snap-link" data-act="open-invite" data-period="${r.period}">
+                      <span class="num strong">${r.validInvite}</span>
+                      <span class="unit">人</span>
+                      <span class="snap-ico">›</span>
+                    </button>
+                  </td>
+                  <td class="text-right">
+                    <button class="snap-link" data-act="open-volume" data-period="${r.period}">
+                      <span class="num strong">${fmtUSDT(r.monthVolume)}</span>
+                      <span class="snap-ico">›</span>
+                    </button>
+                  </td>
+                  <td class="muted">${r.statTime}</td>
+                  <td class="text-right rate-cell">${r.rate}</td>
+                </tr>
+              `;
+            }).join('') : asmtEmptyRow(5)}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // 快照 ①：有效邀请人明细（精简至 5 列）
+    function renderInviteSnapTable(period) {
+      const rows = INVITE_SNAPSHOT[period] || [];
+      return `
+        <table class="data-table biz-table snap-table">
+          <colgroup>
+            <col style="width:24%">
+            <col style="width:18%">
+            <col style="width:18%">
+            <col style="width:20%">
+            <col style="width:20%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>用户邮箱</th>
+              <th>注册时间</th>
+              <th class="text-right">累计充值金额</th>
+              <th class="text-right">累计开仓交易额</th>
+              <th class="text-right">当月开仓交易额</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map((u) => `
+              <tr>
+                <td><span class="link-text">${u.email}</span></td>
+                <td class="muted">${u.registerTime}</td>
+                <td class="text-right num">${fmtUSDT(u.cumulativeDeposit)}</td>
+                <td class="text-right num">${fmtUSDT(u.cumulativeOpenVolume)}</td>
+                <td class="text-right num strong">${fmtUSDT(u.monthOpenVolume)}</td>
+              </tr>
+            `).join('') : asmtEmptyRow(5)}
+          </tbody>
+        </table>
+      `;
+    }
+
+    // 快照 ②：当月总交易额明细（精简至 5 列）
+    function renderVolumeSnapTable(period) {
+      const rows = VOLUME_SNAPSHOT[period] || [];
+      return `
+        <table class="data-table biz-table snap-table">
+          <colgroup>
+            <col style="width:22%">
+            <col style="width:20%">
+            <col style="width:18%">
+            <col style="width:20%">
+            <col style="width:20%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>用户邮箱</th>
+              <th>邀请人邮箱</th>
+              <th class="text-right">开仓交易额</th>
+              <th>开仓时间</th>
+              <th>开仓单号</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map((r) => `
+              <tr>
+                <td><span class="link-text">${r.email}</span></td>
+                <td><span class="muted">${r.inviter}</span></td>
+                <td class="text-right num strong">${fmtUSDT(r.openVolume)}</td>
+                <td class="muted">${r.openTime}</td>
+                <td class="mono">${r.orderNo}</td>
+              </tr>
+            `).join('') : asmtEmptyRow(5)}
+          </tbody>
+        </table>
+      `;
+    }
+
+    /* ============== 弹窗工具 ============== */
+    function openModal(id)  { document.getElementById(id).classList.add('show'); }
+    function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+    function openAssessmentModal() {
+      document.getElementById('asmtMainTableWrap').innerHTML = renderAssessmentTable();
+      openModal('asmtMainModal');
+      bindAssessmentSnapButtons();
+    }
+    function openInviteSnap(period) {
+      document.getElementById('asmtInvitePeriod').textContent = period;
+      document.getElementById('asmtInviteTableWrap').innerHTML = renderInviteSnapTable(period);
+      openModal('asmtInviteModal');
+    }
+    function openVolumeSnap(period) {
+      document.getElementById('asmtVolumePeriod').textContent = period;
+      document.getElementById('asmtVolumeTableWrap').innerHTML = renderVolumeSnapTable(period);
+      openModal('asmtVolumeModal');
+    }
+
+    function bindAssessmentSnapButtons() {
+      document.querySelectorAll('#asmtMainModal [data-act="open-invite"]').forEach((b) => {
+        b.addEventListener('click', () => openInviteSnap(b.dataset.period));
+      });
+      document.querySelectorAll('#asmtMainModal [data-act="open-volume"]').forEach((b) => {
+        b.addEventListener('click', () => openVolumeSnap(b.dataset.period));
+      });
+    }
+
+    /* ============== 测试代理标记 ============== */
+    // localStorage: zb_agent_test = '1' 表示测试代理
+    //               zb_agent_test_expire = 'YYYY-MM-DD' 测试到期时间
+    const TEST_KEY        = 'zb_agent_test';
+    const TEST_EXPIRE_KEY = 'zb_agent_test_expire';
+
+    function isTestAgent() {
+      try { return localStorage.getItem(TEST_KEY) === '1'; }
+      catch (e) { return false; }
+    }
+    function getTestExpire() {
+      try {
+        let v = localStorage.getItem(TEST_EXPIRE_KEY);
+        if (!v) {
+          // 首次进入测试模式：默认到期日为 3 个月后
+          const d = new Date();
+          d.setMonth(d.getMonth() + 3);
+          v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          localStorage.setItem(TEST_EXPIRE_KEY, v);
+        }
+        return v;
+      } catch (e) { return '—'; }
+    }
+    function setTestAgent(on) {
+      try {
+        localStorage.setItem(TEST_KEY, on ? '1' : '0');
+        if (!on) localStorage.removeItem(TEST_EXPIRE_KEY);
+      } catch (e) {}
+    }
+
+    /* ============== Hero 公式 ============== */
+    function heroFormula(parts) {
+      return `<div class="hero-formula">${parts.map((p, i) => {
+        if (['=', '+', '−', '×'].includes(p)) return `<span class="hf-op">${p}</span>`;
+        return `<span class="hf-var${i === 0 ? ' hf-result' : ''}">${p}</span>`;
+      }).join('')}</div>`;
+    }
+
+    /* ============== 结算说明（按角色生成） ============== */
+    // L1 / L2：两种收入（返佣 + 分成）都受影响
+    // L3：最底层代理，没有分成收入，只受返佣影响
+    function settleTip(role) {
+      const incomePart = role === 'L3'
+        ? '<b>返佣金额</b>'
+        : '<b>返佣金额</b> 与 <b>分成金额</b>';
+      return `
+        <div class="settle-tip">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M12 8v4 M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <div class="settle-tip-text">
+            <div class="settle-tip-title">结算说明</div>
+            <p>对于 <b>注册时间不在当月</b> 的历史用户，若其当月累计平仓金额 <b>≤ 1,000 USDT</b>，对应的 ${incomePart} 将进入 <b class="text-warning">「待结算」</b> 状态，暂不结算。</p>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ============== 阶梯表（月度考核标准） ============== */
+    const TIER_DATA = [
+      { lvl: '默认', cls: 'bar-0', invite: '< 50 人',    amount: '< 100,000 USDT',   rate: '45%' },
+      { lvl: 'L1',   cls: 'bar-1', invite: '≥ 50 人',    amount: '≥ 100,000 USDT',   rate: '55%' },
+      { lvl: 'L2',   cls: 'bar-2', invite: '≥ 100 人',   amount: '≥ 500,000 USDT',   rate: '60%' },
+      { lvl: 'L3',   cls: 'bar-3', invite: '≥ 500 人',   amount: '≥ 1,000,000 USDT', rate: '65%' },
+      { lvl: 'L4',   cls: 'bar-4', invite: '≥ 1,500 人', amount: '≥ 2,500,000 USDT', rate: '75%' },
+      { lvl: 'L5',   cls: 'bar-5', invite: '≥ 2,000 人', amount: '≥ 3,000,000 USDT', rate: '80%' },
+    ];
+    const TIER_TABLE = `
+      <div class="tier-wrap">
+        <table class="tier-pro">
+          <colgroup>
+            <col style="width:64px"><col><col style="width:28px"><col><col style="width:78px">
+          </colgroup>
+          <thead>
+            <tr><th>等级</th><th>累计有效邀请</th><th></th><th>上月总交易额</th><th class="text-right">返佣比例</th></tr>
+          </thead>
+          <tbody>
+            ${TIER_DATA.map((t, i) => `
+              <tr ${i === 2 ? 'class="tier-current"' : ''}>
+                <td><span class="lvl-bar ${t.cls}"></span><span class="lvl-name">${t.lvl}</span>${i === 2 ? '<span class="now-tag">当前</span>' : ''}</td>
+                <td>${t.invite}</td>
+                <td class="or-cell">或</td>
+                <td>${t.amount}</td>
+                <td class="text-right rate">${t.rate}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    /* ============== 一级代理 · 主卡视图 ============== */
+    const VIEW_L1 = `
+      <article class="chapter">
+        <header class="chapter-head">
+          <span class="chapter-num">01</span>
+          <div class="chapter-head-text">
+            <h2 class="chapter-title">佣金计算规则</h2>
+            <p class="chapter-sub">您的佣金由 返佣 + 分成 两部分构成</p>
+          </div>
+        </header>
+
+        ${heroFormula(['一级代理佣金', '=', '返佣金额', '+', '分成金额'])}
+
+        <div class="break-grid">
+          <div class="break-item">
+            <div class="break-key">返佣金额</div>
+            <div class="break-formula">
+              <span class="bf-var">平仓手续费</span>
+              <span class="bf-op">×</span>
+              <span class="bf-var">返佣比例</span>
+            </div>
+            <div class="break-note">您邀请的用户平仓后，平台按 <b>返佣比例</b> 给您结算佣金。返佣比例由 <b>月度考核</b> 决定（见 ② 考核标准）</div>
+          </div>
+          <div class="break-item">
+            <div class="break-key">二级代理分成</div>
+            <div class="break-formula">
+              <span class="bf-var">佣金</span>
+              <span class="bf-op">×</span>
+              <span class="bf-var">分成比例</span>
+            </div>
+            <div class="break-note">二级代理邀请的用户平仓后，平台佣金按比例分给您。分成比例由 <b>您自行</b> 对每个二级代理单独设置，默认 100%</div>
+          </div>
+          <div class="break-item">
+            <div class="break-key">三级代理分成</div>
+            <div class="break-formula">
+              <span class="bf-var">佣金</span>
+              <span class="bf-op">×</span>
+              <span class="bf-var">分成比例</span>
+            </div>
+            <div class="break-note">三级代理邀请的用户平仓后，平台佣金按比例分给您（与二级代理分成同时计算，互不冲突）</div>
+          </div>
+        </div>
+
+        ${settleTip('L1')}
+      </article>
+
+      <article class="chapter">
+        <header class="chapter-head">
+          <span class="chapter-num">02</span>
+          <div class="chapter-head-text">
+            <h2 class="chapter-title">月度考核标准</h2>
+            <p class="chapter-sub">仅一级代理参与月度考核 · 按月度数据决定下月返佣比例</p>
+          </div>
+        </header>
+
+        ${TIER_TABLE}
+
+        <div class="stats-grid">
+          <div class="stats-item">
+            <div class="stats-head"><span class="stats-icon">📊</span><span class="stats-title">累计有效邀请人数</span></div>
+            <div class="stats-body">
+              <p class="stats-text"><b>累计充值 ≥ 20 USDT</b> 且 <b>开仓交易额 &gt; 5,000 USDT</b>，即记为 <b class="text-primary">有效邀请用户</b>。</p>
+            </div>
+          </div>
+
+          <div class="stats-item">
+            <div class="stats-head"><span class="stats-icon">📈</span><span class="stats-title">总交易额</span></div>
+            <div class="stats-body">
+              <p class="stats-text">您 <b>整条邀友链路</b> 上所有用户当月的开仓总额，<b class="text-primary">含您本人</b>。</p>
+            </div>
+          </div>
+        </div>
+      </article>
+    `;
+
+    /* ============== 三级代理 · 主卡视图 ============== */
+    const VIEW_L3 = `
+      <article class="chapter">
+        <header class="chapter-head">
+          <span class="chapter-num">01</span>
+          <div class="chapter-head-text">
+            <h2 class="chapter-title">佣金计算规则</h2>
+            <p class="chapter-sub">佣金 = 平仓手续费 × 返佣比例</p>
+          </div>
+        </header>
+
+        ${heroFormula(['三级代理佣金', '=', '平仓手续费', '×', '返佣比例'])}
+
+        <div class="break-grid">
+          <div class="break-item">
+            <div class="break-key">返佣金额</div>
+            <div class="break-formula">
+              <span class="bf-var">平仓手续费</span>
+              <span class="bf-op">×</span>
+              <span class="bf-var">返佣比例</span>
+            </div>
+            <div class="break-note">您邀请的用户平仓后，按您的 <b>返佣比例</b> 结算佣金</div>
+          </div>
+        </div>
+
+        ${settleTip('L3')}
+      </article>
+    `;
+
+    /* ============== 二级代理 · 主卡视图 ============== */
+    const VIEW_L2 = `
+      <article class="chapter">
+        <header class="chapter-head">
+          <span class="chapter-num">01</span>
+          <div class="chapter-head-text">
+            <h2 class="chapter-title">佣金计算规则</h2>
+            <p class="chapter-sub">您的佣金由 返佣 + 分成 两部分构成</p>
+          </div>
+        </header>
+
+        ${heroFormula(['二级代理佣金', '=', '返佣金额', '+', '分成金额'])}
+
+        <div class="break-grid">
+          <div class="break-item">
+            <div class="break-key">返佣金额</div>
+            <div class="break-formula">
+              <span class="bf-var">平仓手续费</span>
+              <span class="bf-op">×</span>
+              <span class="bf-var">返佣比例</span>
+            </div>
+            <div class="break-note">您邀请的用户平仓后，按您的 <b>返佣比例</b> 结算佣金</div>
+          </div>
+          <div class="break-item">
+            <div class="break-key">分成金额</div>
+            <div class="break-formula">
+              <span class="bf-var">下级三级代理佣金</span>
+              <span class="bf-op">×</span>
+              <span class="bf-var">分成比例</span>
+            </div>
+            <div class="break-note">分成比例由 <b>您自行</b> 对每个三级代理单独设置，默认 100%</div>
+          </div>
+        </div>
+
+        ${settleTip('L2')}
+      </article>
+    `;
+
+    /* ============== Hero 横幅（返佣比例 + 运营信息合并展示） ============== */
+    // 布局：左 = 返佣比例大数字；右 = 运营信息（链接/邀请码 + L1 额外 KPI）
+    //
+    // 返佣比例展示规则（按角色动态计算）：
+    //   L1 → 直接显示考核返佣比例 r_A
+    //   L2 → r_A × (1 − s_AB)，副文案展示折算来源
+    //   L3 → r_A × (1 − s_AB) × (1 − s_BC)，同上
+    function renderRateBanner(role) {
+      const isL1 = role === 'L1';
+      const rate = effectiveRebateRate(role);  // 按角色折算
+      const d    = new Date();
+      const yyyy = d.getFullYear();
+      const mm   = String(d.getMonth() + 1).padStart(2, '0');
+
+      // 副文案：仅 L1 显示"按月度考核结果生效"；L2/L3 不展示折算来源（隐性规则）
+      const footText = isL1
+        ? `${yyyy} 年 ${mm} 月 · 按月度考核结果生效`
+        : '';
+
+      // KPI 行（累计有效邀请人数 / 当月总交易额）：仅 L1 显示；L2 / L3 不展示
+      const kpiRow = isL1 ? `
+        <div class="bi-row bi-row-kpi">
+          <div class="bi-cell bi-kpi">
+            <div class="bi-label">累计有效邀请人数</div>
+            <div class="bi-kpi-row">
+              <span class="bi-kpi-num">${AGENT_INFO.validInvite}</span>
+              <span class="bi-kpi-unit">人</span>
+            </div>
+          </div>
+          <div class="bi-cell bi-kpi">
+            <div class="bi-label">当月总交易额</div>
+            <div class="bi-kpi-row">
+              <span class="bi-kpi-num">${AGENT_INFO.monthVolume.toLocaleString('en-US')}</span>
+              <span class="bi-kpi-unit">USDT</span>
+            </div>
+          </div>
+        </div>
+      ` : '';
+
+      return `
+        <section class="rate-banner">
+          <svg class="banner-deco" viewBox="0 0 600 200" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="wave-grad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="rgba(255,255,255,0.18)"/>
+                <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+              </linearGradient>
+            </defs>
+            <circle cx="540" cy="50"  r="80"  fill="rgba(255,255,255,0.08)"/>
+            <circle cx="600" cy="180" r="120" fill="rgba(255,255,255,0.06)"/>
+            <path d="M0,150 C150,120 300,170 450,130 S600,140 600,140 L600,200 L0,200 Z"
+              fill="url(#wave-grad)"/>
+          </svg>
+
+          <div class="banner-inner">
+            <!-- 左：返佣比例大数字 + 副文案（仅 L1 显示） -->
+            <div class="banner-left">
+              <div class="banner-eyebrow">本月返佣比例</div>
+              <div class="banner-rate">
+                <span class="banner-num">${rate}</span><span class="banner-pct">%</span>
+              </div>
+              ${footText ? `<div class="banner-foot">${footText}</div>` : ''}
+              ${isL1 && AGENT_INFO.hasAssessmentHistory ? `
+                <button type="button" class="banner-btn" data-act="open-asmt">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                  </svg>
+                  <span>我的历史月度考核明细</span>
+                  <span class="banner-btn-arrow">›</span>
+                </button>
+              ` : ''}
+            </div>
+
+            ${isL1 ? `
+              <!-- 中：竖向分隔线（仅 L1：右侧才有 KPI） -->
+              <div class="banner-divider"></div>
+              <!-- 右：KPI（累计有效邀请人数 / 当月总交易额，仅 L1） -->
+              <div class="banner-right">
+                ${kpiRow}
+              </div>
+            ` : ''}
+          </div>
+        </section>
+      `;
+    }
+
+    /* ============== 测试代理提示条 ============== */
+    function renderTestNotice() {
+      if (!isTestAgent()) return '';
+      const expire = getTestExpire();
+      return `
+        <div class="test-notice">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M12 8v4 M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <span>您当前为 <b>测试代理</b>，测试到期时间：<b class="test-date">${expire}</b></span>
+        </div>
+      `;
+    }
+
+    /* ============== 主框架 ============== */
+    const PAGE_CONTENT = `
+      <div class="page-header">
+        <div class="title-row">
+          <h1 class="page-title">规则说明</h1>
+          <div class="role-switch-wrap">
+            <div class="role-switch">
+              <span class="role-label">代理身份</span>
+              <button class="role-pill active" data-role="L1">一级代理</button>
+              <button class="role-pill" data-role="L2">二级代理</button>
+              <button class="role-pill" data-role="L3">三级代理</button>
+            </div>
+            <button class="test-toggle" id="btnTestToggle">
+              <span class="test-toggle-dot"></span>
+              <span id="testToggleText">测试代理：关</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div id="testNotice"></div>
+      <div id="rateBanner"></div>
+
+      <main class="main-card">
+        <div id="rulesBody"></div>
+      </main>
+
+      <!-- 月度考核 主弹窗（仅 L1 + 有历史时可触发） -->
+      <div class="modal" id="asmtMainModal">
+        <div class="modal-mask" data-act="close-asmt-main"></div>
+        <div class="modal-body modal-asmt">
+          <div class="modal-head">
+            <h3>我的历史月度考核明细</h3>
+            <button class="modal-close" data-act="close-asmt-main">✕</button>
+          </div>
+          <div class="modal-content">
+            <p class="modal-sub">月度考核数据按月汇总；点击「有效邀请人」或「当月总交易额」数字可查看明细快照。</p>
+            <div class="table-wrap" id="asmtMainTableWrap"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快照 ①：有效邀请人 -->
+      <div class="modal modal-snap-level" id="asmtInviteModal">
+        <div class="modal-mask" data-act="close-asmt-invite"></div>
+        <div class="modal-body modal-snap">
+          <div class="modal-head">
+            <h3>有效邀请人（快照明细）</h3>
+            <span class="modal-period" id="asmtInvitePeriod">2026-05</span>
+            <button class="modal-close" data-act="close-asmt-invite">✕</button>
+          </div>
+          <div class="modal-content">
+            <div class="table-wrap" id="asmtInviteTableWrap"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快照 ②：当月总交易额 -->
+      <div class="modal modal-snap-level" id="asmtVolumeModal">
+        <div class="modal-mask" data-act="close-asmt-volume"></div>
+        <div class="modal-body modal-snap modal-snap-wide">
+          <div class="modal-head">
+            <h3>当月总交易额（快照明细）</h3>
+            <span class="modal-period" id="asmtVolumePeriod">2026-05</span>
+            <button class="modal-close" data-act="close-asmt-volume">✕</button>
+          </div>
+          <div class="modal-content">
+            <div class="modal-tip">
+              代理 <b>邀请链路上所有人</b> 的开仓交易额，<b>包括代理自己</b>。
+            </div>
+            <div class="table-wrap" id="asmtVolumeTableWrap"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    /* ============== 切换逻辑 ============== */
+    const STORAGE_KEY = 'zb_agent_role';
+
+    function renderRole(role) {
+      const body    = document.getElementById('rulesBody');
+      const banner  = document.getElementById('rateBanner');
+      const notice  = document.getElementById('testNotice');
+      if (!body || !banner) return;
+
+      // L1 → VIEW_L1（含双收入 + 月度考核）
+      // L2 → VIEW_L2（双收入：返佣 + 分成）
+      // L3 → VIEW_L3（单收入：扣除一级 + 二级分成后的剩余）
+      body.innerHTML   = role === 'L1' ? VIEW_L1
+                       : role === 'L3' ? VIEW_L3
+                       : VIEW_L2;
+      banner.innerHTML = renderRateBanner(role);
+      notice.innerHTML = renderTestNotice();
+
+      document.querySelectorAll('.role-pill').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.role === role);
+      });
+      try { localStorage.setItem(STORAGE_KEY, role); } catch (e) {}
+
+      if (typeof refreshSidebar === 'function') refreshSidebar();
+    }
+
+    function refreshTestToggleUI() {
+      const on = isTestAgent();
+      const btn = document.getElementById('btnTestToggle');
+      const txt = document.getElementById('testToggleText');
+      if (!btn || !txt) return;
+      btn.classList.toggle('on', on);
+      txt.textContent = on ? '测试代理：开' : '测试代理：关';
+    }
+
+    window.onPageReady = function () {
+      const saved = (function () {
+        try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
+      })() || 'L1';
+      renderRole(saved);
+      refreshTestToggleUI();
+
+      document.querySelectorAll('.role-pill').forEach((btn) => {
+        btn.addEventListener('click', () => renderRole(btn.dataset.role));
+      });
+
+      const btnTest = document.getElementById('btnTestToggle');
+      if (btnTest) {
+        btnTest.addEventListener('click', () => {
+          const next = !isTestAgent();
+          setTestAgent(next);
+          refreshTestToggleUI();
+          // 切换后刷新测试提示条
+          document.getElementById('testNotice').innerHTML = renderTestNotice();
+          toast(next ? '已开启测试代理模式' : '已关闭测试代理模式', 'success');
+        });
+      }
+
+      // 月度考核弹窗：打开（事件委托，因为按钮在 renderRateBanner 里动态渲染）
+      document.body.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-act="open-asmt"]');
+        if (target) openAssessmentModal();
+      });
+      // 月度考核弹窗：关闭（主 + 2 个快照子弹窗）
+      document.querySelectorAll('[data-act="close-asmt-main"]').forEach((el) => {
+        el.addEventListener('click', () => closeModal('asmtMainModal'));
+      });
+      document.querySelectorAll('[data-act="close-asmt-invite"]').forEach((el) => {
+        el.addEventListener('click', () => closeModal('asmtInviteModal'));
+      });
+      document.querySelectorAll('[data-act="close-asmt-volume"]').forEach((el) => {
+        el.addEventListener('click', () => closeModal('asmtVolumeModal'));
+      });
+    };
+
+    initLayout(PAGE_CONTENT);
+  </script>
+
+  <style>
+    /* —————————————————————————————————————— 顶部标题行 */
+    .page-header { margin-bottom: 14px; }
+    .title-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 16px; flex-wrap: wrap;
+    }
+    .role-switch-wrap {
+      display: inline-flex; align-items: center; gap: 10px;
+    }
+    .role-switch {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #fff; padding: 4px 6px 4px 14px;
+      border-radius: 999px; border: 1px solid var(--color-border);
+      box-shadow: var(--shadow-sm);
+    }
+    .role-label { font-size: var(--fs-meta); color: var(--color-text-muted); margin-right: 6px; }
+    .role-pill {
+      padding: 6px 16px; border-radius: 999px;
+      font-size: var(--fs-body); color: var(--color-text-secondary); transition: all 0.2s;
+      font-family: inherit; border: none; cursor: pointer; background: transparent;
+    }
+    .role-pill:hover { color: var(--color-primary); }
+    .role-pill.active {
+      background: var(--color-primary); color: #fff; font-weight: 600;
+      box-shadow: 0 2px 6px rgba(0, 200, 150, 0.3);
+    }
+
+    /* 测试代理开关 pill */
+    .test-toggle {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px;
+      background: #fff;
+      border: 1px solid var(--color-border);
+      border-radius: 999px;
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+      font-family: inherit; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .test-toggle:hover { border-color: var(--color-warning); color: var(--color-warning); }
+    .test-toggle-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--color-text-muted);
+      transition: background 0.15s;
+    }
+    .test-toggle.on { background: #fff8e6; border-color: #fde68a; color: #b45309; }
+    .test-toggle.on .test-toggle-dot { background: var(--color-warning); }
+
+    /* —————————————————————————————————————— 测试代理提示条 */
+    .test-notice {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px;
+      background: #fff8e6;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      font-size: var(--fs-body-sm);
+      color: #92400e;
+      margin-bottom: 12px;
+    }
+    .test-notice svg { color: var(--color-warning); flex-shrink: 0; }
+    .test-notice b { color: var(--color-text); font-weight: var(--fw-semibold); }
+    .test-date { color: var(--color-danger); font-family: ui-monospace, monospace; }
+
+    /* —————————————————————————————————————— Hero 横幅（合并：返佣比例 + 运营信息） */
+    .rate-banner {
+      position: relative;
+      background: linear-gradient(120deg, #00c896 0%, #00a380 55%, #008b6a 100%);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 14px;
+      overflow: hidden;
+      box-shadow: 0 6px 18px rgba(0, 200, 150, 0.2);
+    }
+    .banner-deco {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    .banner-inner {
+      position: relative; z-index: 1;
+      display: flex; align-items: stretch; gap: 22px;
+    }
+
+    /* 左：返佣比例 */
+    .banner-left {
+      color: #fff;
+      flex-shrink: 0;
+      min-width: 180px;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .banner-eyebrow {
+      font-size: var(--fs-mini);
+      color: rgba(255,255,255,0.85);
+      letter-spacing: 1.2px;
+      margin-bottom: 2px;
+      text-transform: uppercase;
+    }
+    .banner-rate {
+      display: flex; align-items: baseline; gap: 2px;
+      color: #fff;
+      text-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+    .banner-num { font-size: 52px; font-weight: 900; letter-spacing: -2px; line-height: 1; }
+    .banner-pct { font-size: 26px; font-weight: 700; margin-left: 2px; }
+    .banner-foot {
+      margin-top: 4px;
+      font-size: var(--fs-meta);
+      color: rgba(255,255,255,0.78);
+      letter-spacing: 0.2px;
+    }
+
+    /* Hero 横幅内的跳转按钮（仅 L1 + 有历史考核数据时显示） */
+    .banner-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.32);
+      border-radius: 6px;
+      color: #fff;
+      font-size: var(--fs-meta);
+      font-weight: var(--fw-medium);
+      text-decoration: none;
+      transition: all 0.18s;
+      width: fit-content;
+      backdrop-filter: blur(2px);
+    }
+    .banner-btn:hover {
+      background: #fff;
+      color: var(--color-primary);
+      border-color: #fff;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+    }
+    .banner-btn:hover .banner-btn-arrow { transform: translateX(2px); }
+    .banner-btn-arrow {
+      font-size: 16px;
+      line-height: 1;
+      margin-left: 1px;
+      transition: transform 0.18s;
+    }
+
+    /* 中：竖向分隔线 */
+    .banner-divider {
+      width: 1px;
+      align-self: stretch;
+      background: rgba(255,255,255,0.18);
+      flex-shrink: 0;
+    }
+
+    /* 右：L1 才有的 KPI 区域 */
+    .banner-right {
+      flex: 1 1 auto; min-width: 0;
+      display: flex; align-items: center;
+    }
+    .bi-row {
+      display: grid;
+      gap: 10px;
+      width: 100%;
+    }
+    .bi-row-kpi { grid-template-columns: 1fr 1fr; }
+
+    .bi-cell {
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.16);
+      border: 1px solid rgba(255,255,255,0.24);
+      border-radius: 8px;
+      min-width: 0;
+      backdrop-filter: blur(2px);
+    }
+    .bi-label {
+      font-size: var(--fs-mini);
+      color: rgba(255,255,255,0.78);
+      margin-bottom: 3px;
+      letter-spacing: 0.3px;
+    }
+    .mono {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+    }
+
+    /* KPI 单元格：累计有效邀请 / 当月总交易额 */
+    .bi-kpi {
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .bi-kpi-row {
+      display: flex; align-items: baseline; gap: 4px;
+    }
+    .bi-kpi-num {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      font-size: 26px;
+      font-weight: var(--fw-bold);
+      color: #fff;
+      letter-spacing: -0.5px;
+      line-height: 1.1;
+    }
+    .bi-kpi-unit {
+      font-size: var(--fs-meta);
+      color: rgba(255,255,255,0.85);
+    }
+
+    /* —————————————————————————————————————— 主卡（佣金规则 + 考核标准） */
+    .main-card {
+      background: #fff; border-radius: 12px;
+      padding: 20px 22px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      min-width: 0;
+    }
+    #rulesBody {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+    }
+    .chapter { flex: 1 1 0; min-width: 0; padding: 4px 0; }
+    .chapter:first-of-type { padding-right: 22px; }
+    .chapter:last-of-type {
+      padding-left: 22px;
+      border-left: 1px solid #eef1f5;
+    }
+    /* L2 视图只剩一个章节时：取消左右内边距和分隔线 */
+    .chapter:only-of-type {
+      padding-left: 0;
+      padding-right: 0;
+      border-left: none;
+    }
+    .break-grid, .stats-grid {
+      grid-template-columns: 1fr !important;
+      gap: 10px !important;
+    }
+
+    /* 章节头 */
+    .chapter-head {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #f0f3f7;
+    }
+    .chapter-num {
+      flex-shrink: 0;
+      width: 26px; height: 26px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #00c896 0%, #00a87d 100%);
+      color: #fff; font-size: var(--fs-meta); font-weight: var(--fw-bold);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 6px rgba(0, 200, 150, 0.25);
+    }
+    .chapter-head-text { min-width: 0; }
+    .chapter-title {
+      font-size: var(--fs-h2); font-weight: var(--fw-bold);
+      color: var(--color-text); line-height: var(--lh-tight);
+    }
+    .chapter-sub {
+      font-size: var(--fs-meta); color: var(--color-text-secondary);
+      line-height: var(--lh-normal); margin-top: 1px;
+    }
+
+    /* Hero 公式 */
+    .hero-formula {
+      display: flex; align-items: center; justify-content: center;
+      flex-wrap: wrap; gap: 6px;
+      padding: 16px 12px; margin: 0 0 10px;
+      background: linear-gradient(135deg, #f0fdf8 0%, #f7faff 100%);
+      border-radius: 8px; border: 1px solid #e0f5ec;
+    }
+    .hf-var {
+      font-size: var(--fs-body); font-weight: var(--fw-semibold); color: #1a1a1a;
+      padding: 5px 11px; background: #fff; border-radius: 5px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    .hf-result {
+      color: var(--color-primary); font-size: var(--fs-h2);
+      background: rgba(0, 200, 150, 0.08);
+    }
+    .hf-op { color: #8b96a3; font-size: var(--fs-h2); font-weight: var(--fw-medium); }
+
+    /* 公式拆解 */
+    .break-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .break-item {
+      padding: 10px 12px;
+      background: #fafbfc; border-radius: 6px; border: 1px solid #eef1f5;
+    }
+    .break-key {
+      display: inline-block; font-size: var(--fs-meta); font-weight: var(--fw-semibold);
+      color: var(--color-primary);
+      padding: 1px 8px; background: rgba(0, 200, 150, 0.08);
+      border-radius: 3px; margin-bottom: 6px;
+    }
+    .break-formula {
+      display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+      margin-bottom: 6px; font-size: var(--fs-body-sm);
+    }
+    .bf-var { color: var(--color-text); font-weight: var(--fw-medium); }
+    .bf-op { color: #8b96a3; font-weight: var(--fw-semibold); }
+    .break-note {
+      font-size: var(--fs-mini); color: var(--color-text-secondary); line-height: var(--lh-normal);
+      padding-top: 6px; border-top: 1px dashed #e4e9f0;
+    }
+
+    /* —————————————————————————————————————— 结算说明（章节末尾的警示条） */
+    .settle-tip {
+      display: flex; gap: 10px; align-items: flex-start;
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: #fff8e6;
+      border-left: 3px solid var(--color-warning);
+      border-radius: 6px;
+      font-size: var(--fs-meta);
+      color: var(--color-text);
+      line-height: var(--lh-normal);
+    }
+    .settle-tip svg { color: var(--color-warning); flex-shrink: 0; margin-top: 2px; }
+    .settle-tip-text { min-width: 0; }
+    .settle-tip-title {
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+      color: var(--color-text);
+      margin-bottom: 3px;
+    }
+    .settle-tip-text p { margin: 0; }
+    .settle-tip-text b { color: var(--color-text); font-weight: var(--fw-semibold); }
+
+    /* 阶梯表 */
+    .tier-wrap {
+      border-radius: 6px; border: 1px solid var(--color-border);
+      overflow: hidden; margin-bottom: 10px;
+    }
+    table.tier-pro { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
+    .tier-pro thead { background: #f8fafc; }
+    .tier-pro th {
+      padding: 9px 10px; text-align: left; font-weight: var(--fw-semibold);
+      color: var(--color-text-secondary); font-size: var(--fs-body-sm); letter-spacing: 0.2px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .tier-pro td {
+      padding: 8px 10px; font-size: var(--fs-body);
+      border-bottom: 1px solid #f0f3f7; color: var(--color-text);
+    }
+    .tier-pro tbody tr:last-child td { border-bottom: none; }
+    .tier-pro tbody tr:hover { background: #fafbfc; }
+    .tier-pro .tier-current { background: rgba(0,200,150,0.04); }
+    .tier-pro .tier-current:hover { background: rgba(0,200,150,0.07) !important; }
+
+    .lvl-bar {
+      display: inline-block; width: 3px; height: 12px; border-radius: 2px;
+      vertical-align: middle; margin-right: 6px;
+    }
+    .bar-0 { background: #94a3b8; }
+    .bar-1 { background: linear-gradient(180deg, #38bdf8 0%, #0ea5e9 100%); }
+    .bar-2 { background: linear-gradient(180deg, #34d399 0%, #10b981 100%); }
+    .bar-3 { background: linear-gradient(180deg, #a78bfa 0%, #8b5cf6 100%); }
+    .bar-4 { background: linear-gradient(180deg, #fb923c 0%, #f97316 100%); }
+    .bar-5 { background: linear-gradient(180deg, #f472b6 0%, #ec4899 100%); }
+    .bar-test { background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%); }
+
+    .lvl-name { font-weight: var(--fw-semibold); font-size: var(--fs-body-sm); color: var(--color-text); vertical-align: middle; }
+    .now-tag {
+      display: inline-block; margin-left: 4px;
+      padding: 0 5px; background: var(--color-primary); color: #fff;
+      font-size: var(--fs-tag); border-radius: 3px; font-weight: var(--fw-semibold); vertical-align: middle;
+      line-height: 14px;
+    }
+    .or-cell { color: #94a3b8; font-size: var(--fs-mini); text-align: center; }
+    .rate { font-weight: var(--fw-bold); color: var(--color-primary); font-size: var(--fs-h2); }
+    .rate-special { color: #f59e0b; }
+    .tier-special { background: #fffbeb; }
+    .tier-special:hover { background: #fef3c7 !important; }
+    .special-desc { color: var(--color-text-secondary); font-size: var(--fs-meta); }
+    .text-right { text-align: right; }
+
+    /* 统计 2 栏 */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stats-item {
+      padding: 12px 14px;
+      background: #fafbfc; border: 1px solid #eef1f5; border-radius: 6px;
+    }
+    .stats-head {
+      display: flex; align-items: center; gap: 6px;
+      margin-bottom: 8px; padding-bottom: 8px;
+      border-bottom: 1px solid #eef1f5;
+    }
+    .stats-icon { font-size: 14px; }
+    .stats-title { font-size: var(--fs-body); font-weight: var(--fw-semibold); color: var(--color-text); }
+    .stats-body { font-size: var(--fs-meta); color: var(--color-text); line-height: var(--lh-normal); }
+    .stats-text { line-height: var(--lh-normal); margin-bottom: 8px; font-size: var(--fs-meta); }
+
+    .mini-formula {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+      padding: 6px 8px; background: #fff;
+      border: 1px dashed #c7e8db; border-radius: 5px;
+      margin-bottom: 8px; font-size: var(--fs-mini); color: var(--color-text);
+      justify-content: center;
+    }
+    .mf-op { color: var(--color-primary); font-weight: var(--fw-bold); }
+
+    /* 工具 */
+    .text-primary { color: var(--color-primary); }
+    .text-warning { color: var(--color-warning); }
+
+    /* ==================== 月度考核 弹窗（主 + 2 个快照子弹窗） ==================== */
+    .modal {
+      position: fixed; inset: 0;
+      z-index: 1000;
+      display: none;
+    }
+    .modal.show { display: flex; align-items: center; justify-content: center; }
+    /* 子级快照弹窗：z-index 更高，盖在主弹窗之上 */
+    .modal-snap-level { z-index: 1010; }
+
+    .modal-mask {
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.35);
+      backdrop-filter: blur(2px);
+    }
+    .modal-body {
+      position: relative; z-index: 1;
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.2);
+      animation: modalIn 0.2s;
+      overflow: hidden;
+      max-height: 90vh;
+      display: flex; flex-direction: column;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .modal-asmt      { width: 920px;  max-width: 94vw; }
+    .modal-snap      { width: 920px;  max-width: 94vw; }
+    .modal-snap-wide { width: 1040px; }
+
+    .modal-head {
+      display: flex; align-items: center; gap: 10px;
+      padding: 14px 20px;
+      border-bottom: 1px solid #f0f3f7;
+    }
+    .modal-head h3 {
+      font-size: var(--fs-h2);
+      font-weight: var(--fw-bold);
+      color: var(--color-text);
+    }
+    .modal-period {
+      padding: 2px 10px;
+      background: rgba(0, 200, 150, 0.1);
+      color: var(--color-primary);
+      border-radius: 4px;
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+    }
+    .modal-close {
+      width: 26px; height: 26px;
+      border: none; background: transparent;
+      cursor: pointer; border-radius: 4px;
+      color: var(--color-text-muted);
+      font-size: 16px;
+      margin-left: auto;
+    }
+    .modal-close:hover { background: #f0f3f7; color: var(--color-text); }
+    .modal-content {
+      padding: 14px 20px 20px;
+      overflow: auto;
+      flex: 1 1 auto;
+    }
+    .modal-sub {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+      margin-bottom: 12px;
+      line-height: var(--lh-normal);
+    }
+    .modal-tip {
+      padding: 9px 12px;
+      background: #f0f9ff;
+      border-left: 3px solid var(--color-info);
+      border-radius: 4px;
+      font-size: var(--fs-meta);
+      color: var(--color-text);
+      margin-bottom: 12px;
+      line-height: var(--lh-normal);
+    }
+    .modal-tip b { color: var(--color-primary); }
+
+    /* —— 月度考核表 + 快照表 —— */
+    .biz-table { table-layout: fixed; width: 100%; }
+    .biz-table th, .biz-table td {
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 11px 16px;
+      font-size: var(--fs-body-sm);
+    }
+    /* 表头允许换行：保证长字段名（如「考核获取的返佣比例」）永不被截断 */
+    .biz-table th {
+      white-space: normal;
+      line-height: 1.4;
+      word-break: keep-all;     /* 不在汉字中间断行 */
+      overflow-wrap: break-word;/* 实在过长时按字符断 */
+    }
+    .snap-table th, .snap-table td { padding: 10px 12px; }
+    .muted { color: var(--color-text-muted); }
+    .num { font-family: ui-monospace, 'SF Mono', Consolas, monospace; color: var(--color-text); }
+    .num.strong { color: var(--color-primary); font-weight: var(--fw-semibold); }
+    .mono { font-family: ui-monospace, 'SF Mono', Consolas, monospace; font-size: var(--fs-body-sm); color: var(--color-text); }
+    .link-text { color: var(--color-text); font-weight: var(--fw-medium); }
+    .text-center { text-align: center; }
+
+    /* 考核周期单元格（上：月份 pill；下：起止日期范围） */
+    .period-cell {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      min-width: 0;
+    }
+    .period-tag {
+      display: inline-block;
+      padding: 3px 10px;
+      background: rgba(0, 200, 150, 0.08);
+      color: var(--color-primary);
+      border-radius: 4px;
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+    }
+    .period-range {
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-tag);
+      color: var(--color-text-muted);
+      letter-spacing: 0.3px;
+      padding-left: 2px;
+    }
+
+    /* "查看快照"链接按钮 */
+    .snap-link {
+      display: inline-flex; align-items: baseline; gap: 4px;
+      padding: 4px 10px;
+      background: transparent;
+      border: 1px dashed transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .snap-link:hover {
+      background: rgba(0, 200, 150, 0.06);
+      border-color: rgba(0, 200, 150, 0.3);
+    }
+    .snap-link .unit {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+      margin-left: 2px;
+    }
+    .snap-link .snap-ico {
+      color: var(--color-primary);
+      font-size: var(--fs-h3);
+      font-weight: var(--fw-bold);
+      margin-left: 4px;
+      transition: transform 0.15s;
+    }
+    .snap-link:hover .snap-ico { transform: translateX(2px); }
+
+    /* 考核获取的返佣比例 */
+    .rate-cell {
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-h3);
+      font-weight: var(--fw-bold);
+      color: var(--color-primary);
+    }
+
+    /* 空态行（弹窗内简化版） */
+    .empty-row td.empty-cell {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--color-text-muted);
+      font-size: var(--fs-meta);
+    }
+
+    /* 响应式 */
+    @media (max-width: 1024px) {
+      /* 章节单列 */
+      #rulesBody { flex-direction: column; gap: 24px; }
+      .chapter:first-of-type { padding-right: 0; padding-bottom: 22px; border-bottom: 1px solid #eef1f5; }
+      .chapter:last-of-type  { padding-left: 0; padding-top: 22px; border-left: none; }
+
+      /* Banner 上下堆叠 */
+      .banner-inner { flex-direction: column; align-items: stretch; gap: 14px; }
+      .banner-divider { width: 100%; height: 1px; }
+      .banner-left { min-width: 0; }
+    }
+    @media (max-width: 720px) {
+      /* KPI 行退化为单列 */
+      .bi-row-kpi { grid-template-columns: 1fr; }
+      .main-card { padding: 22px 18px; }
+      .rate-banner { padding: 20px 18px; }
+      .banner-num { font-size: 44px; }
+      .banner-pct { font-size: 22px; }
+      .bi-kpi-num { font-size: 22px; }
+      .hero-formula { padding: 18px 14px; }
+      .hf-var, .hf-result { font-size: var(--fs-body); padding: 5px 10px; }
+      /* 邀请卡片：移动端撑满 */
+      .invite-card { max-width: 100%; }
+      .invite-label { min-width: 56px; }
+    }
+  </style>
+</body>
+</html>

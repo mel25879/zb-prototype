@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>用户交易订单</title>
+  <link rel="stylesheet" href="assets/css/common.css?v=7">
+</head>
+<body data-title="用户交易订单">
+  <div id="app"></div>
+  <script src="assets/js/common.js?v=7"></script>
+  <script>
+    /* =================================================================
+       用户交易订单 · 按需求文档实现
+       双层 Tab 结构：
+         顶层 Tab（按角色）：
+           L1：① 我邀请用户的交易订单
+               ② 我的有效用户交易订单
+               ③ 我的下级代理邀请用户的交易订单
+           L2：仅 ① 一个 Tab
+         子 Tab（每个顶层 Tab 内）：开仓 / 平仓
+       ================================================================= */
+
+    /* ============== 角色 ============== */
+    function getRole() {
+      try { return localStorage.getItem('zb_agent_role') || 'L1'; }
+      catch (e) { return 'L1'; }
+    }
+
+    /* ============== Toast / 工具 ============== */
+    function toast(msg, type) {
+      const t = document.createElement('div');
+      t.className = `toast toast-${type || 'success'}`;
+      t.innerHTML = `<span class="toast-ico">${type === 'danger' ? '✕' : '✓'}</span>${msg}`;
+      document.body.appendChild(t);
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 250); }, 2000);
+    }
+    function fmtUSDT(v) {
+      return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
+    }
+    // 有效类型 tag（当月有效 / 历史有效）
+    function validTypeTag(type) {
+      const cls = type === '当月有效' ? 'vt-month' : 'vt-history';
+      return `<span class="vt-tag ${cls}">${type}</span>`;
+    }
+    // 是否为有效用户 tag（是 / 否）
+    function isValidTag(valid) {
+      return valid
+        ? '<span class="vt-tag vt-yes">是</span>'
+        : '<span class="vt-tag vt-no">否</span>';
+    }
+
+    /* ============== Mock 数据 ============== */
+    // ① 我邀请用户的 — 开仓
+    // isValid: 是否为有效用户（依据规则：累计充值 ≥ 20 USDT 且 当月开仓交易额 > 5,000 USDT）
+    const MY_OPEN = [
+      { email: '202605285@qq.com',   orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400,   isValid: false },
+      { email: 'alice***@gmail.com', orderNo: 'TX20260519005', openTime: '2026-05-30 11:22:01', openAmt: 10000, isValid: true  },
+      { email: 'bob***@outlook.com', orderNo: 'TX20260518023', openTime: '2026-05-28 09:12:00', openAmt: 50000, isValid: true  },
+      { email: 'david***@qq.com',    orderNo: 'TX20260517008', openTime: '2026-05-27 22:48:00', openAmt: 20000, isValid: true  },
+    ];
+    // ① 我邀请用户的 — 平仓
+    const MY_CLOSED = [
+      { email: '202605285@qq.com',   openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400,   isValid: false },
+      { email: 'alice***@gmail.com', openNo: 'TX20260515001', closeNo: 'TX20260515099', closeTime: '2026-05-29 16:45:00', closeAmt: 10000, isValid: true  },
+      { email: 'bob***@outlook.com', openNo: 'TX20260514023', closeNo: 'TX20260514099', closeTime: '2026-05-26 18:30:00', closeAmt: 50000, isValid: true  },
+    ];
+
+    // ② 我的有效用户 — 开仓（多一个"用户有效类型"列与筛选）
+    const VALID_OPEN = [
+      { email: '202605285@qq.com', orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400,   validType: '当月有效' },
+      { email: '202605286@qq.com', orderNo: 'TX20260519003', openTime: '2026-05-31 15:34:10', openAmt: 400,   validType: '历史有效' },
+      { email: 'alice***@gmail.com', orderNo: 'TX20260519005', openTime: '2026-05-30 11:22:01', openAmt: 10000, validType: '当月有效' },
+    ];
+    // ② 我的有效用户 — 平仓
+    const VALID_CLOSED = [
+      { email: '202605285@qq.com', openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400,   validType: '当月有效' },
+      { email: '202605286@qq.com', openNo: 'TX20260519003', closeNo: 'TX20260519004', closeTime: '2026-05-31 15:36:10', closeAmt: 400,   validType: '历史有效' },
+    ];
+
+    // ③ 我的下级代理邀请用户 — 开仓（比 ① 多一列"代理邮箱"）
+    const SUB_OPEN = [
+      { email: '202605285@qq.com',   agentEmail: 'sub***@gmail.com',     orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400   },
+      { email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',     orderNo: 'TX20260517005', openTime: '2026-05-29 09:12:00', openAmt: 5000  },
+      { email: 'lily***@gmail.com',  agentEmail: 'partner***@163.com',   orderNo: 'TX20260514042', openTime: '2026-05-27 16:08:00', openAmt: 42000 },
+    ];
+    // ③ 我的下级代理邀请用户 — 平仓（比 ① 多一列"代理邮箱"）
+    const SUB_CLOSED = [
+      { email: '202605285@qq.com',   agentEmail: 'sub***@gmail.com',     openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400  },
+      { email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',     openNo: 'TX20260517005', closeNo: 'TX20260517099', closeTime: '2026-05-29 11:30:00', closeAmt: 5000 },
+    ];
+
+    /* ============== Filter Bar（按表类型动态生成） ============== */
+    // type: 'open' | 'closed'
+    // hasValid: 是否带"用户有效类型"筛选（仅 Tab ② 用）
+    // hasAgent: 是否带"代理邮箱"筛选（仅 Tab ③ 用）
+    function filterBar(type, hasValid, hasAgent) {
+      const isOpen = type === 'open';
+      const orderLabel = isOpen ? '开仓单号' : '平仓单号';
+      const timeLabel  = isOpen ? '开仓时间' : '平仓时间';
+
+      return `
+        <div class="filter-row">
+          <input type="text" class="form-input filter-input" placeholder="${orderLabel}" />
+          <input type="text" class="form-input filter-input" placeholder="用户邮箱" />
+          ${hasAgent ? `
+            <input type="text" class="form-input filter-input" placeholder="代理邮箱" />
+          ` : ''}
+          ${hasValid ? `
+            <select class="form-select filter-input">
+              <option value="">全部有效类型</option>
+              <option value="当月有效">当月有效</option>
+              <option value="历史有效">历史有效</option>
+            </select>
+          ` : ''}
+          <div class="date-input-wrap">
+            <svg class="date-ico" viewBox="0 0 24 24" width="16" height="16" fill="none">
+              <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.6"/>
+              <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.6"/>
+            </svg>
+            <input type="date" class="dt-input" title="${timeLabel} 起" />
+            <span class="dt-sep">~</span>
+            <input type="date" class="dt-input" title="${timeLabel} 止" />
+          </div>
+
+          <div class="filter-actions">
+            <button class="btn-reset" data-act="reset">重置</button>
+            <button class="btn-query" data-act="search">搜索</button>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ============== 表渲染：开仓 ============== */
+    // hasValid   = true 时多一列"用户有效类型"（仅 Tab ②，目前已隐藏）
+    // hasAgent   = true 时多一列"代理邮箱"      （仅 Tab ③）
+    // hasIsValid = true 时多一列"是否为有效用户"（仅 Tab ①）
+    function renderOpenTable(data, hasValid, hasAgent, hasIsValid) {
+      const baseCols = 4;
+      const cols = baseCols + (hasValid ? 1 : 0) + (hasAgent ? 1 : 0) + (hasIsValid ? 1 : 0);
+
+      // 根据是否多列，动态选 colgroup（保证宽度总和=100%）
+      let colgroup;
+      if (hasValid) {
+        // Tab ②：用户/单号/时间/金额/有效类型（5 列）
+        colgroup = `
+          <col style="width:24%">
+          <col style="width:22%">
+          <col style="width:20%">
+          <col style="width:18%">
+          <col style="width:16%">
+        `;
+      } else if (hasAgent) {
+        // Tab ③：用户/代理/单号/时间/金额（5 列）
+        colgroup = `
+          <col style="width:22%">
+          <col style="width:22%">
+          <col style="width:22%">
+          <col style="width:18%">
+          <col style="width:16%">
+        `;
+      } else if (hasIsValid) {
+        // Tab ①：用户/单号/时间/金额/是否为有效用户（5 列）
+        colgroup = `
+          <col style="width:26%">
+          <col style="width:22%">
+          <col style="width:20%">
+          <col style="width:18%">
+          <col style="width:14%">
+        `;
+      } else {
+        // 兜底（无任何附加列）：用户/单号/时间/金额（4 列）
+        colgroup = `
+          <col style="width:30%">
+          <col style="width:24%">
+          <col style="width:24%">
+          <col style="width:22%">
+        `;
+      }
+
+      return `
+        <div class="table-wrap">
+          <table class="data-table biz-table">
+            <colgroup>${colgroup}</colgroup>
+            <thead>
+              <tr>
+                <th>用户邮箱</th>
+                ${hasAgent ? '<th>代理邮箱</th>' : ''}
+                <th>开仓单号</th>
+                <th>开仓时间</th>
+                <th class="text-right">开仓交易额</th>
+                ${hasValid ? '<th class="text-center">用户有效类型</th>' : ''}
+                ${hasIsValid ? '<th class="text-center">是否为有效用户</th>' : ''}
+              </tr>
+            </thead>
+            <tbody>
+              ${data.length ? data.map((r) => `
+                <tr>
+                  <td><span class="link-text">${r.email}</span></td>
+                  ${hasAgent ? `<td><span class="agent-tag">${r.agentEmail}</span></td>` : ''}
+                  <td class="mono">${r.orderNo}</td>
+                  <td class="muted">${r.openTime}</td>
+                  <td class="text-right num strong">${fmtUSDT(r.openAmt)}</td>
+                  ${hasValid ? `<td class="text-center">${validTypeTag(r.validType)}</td>` : ''}
+                  ${hasIsValid ? `<td class="text-center">${isValidTag(r.isValid)}</td>` : ''}
+                </tr>
+              `).join('') : emptyRow(cols)}
+            </tbody>
+          </table>
+        </div>
+        ${pagination(data.length)}
+      `;
+    }
+
+    /* ============== 表渲染：平仓 ============== */
+    // hasValid   = true 时多一列"用户有效类型"（仅 Tab ②，目前已隐藏）
+    // hasAgent   = true 时多一列"代理邮箱"      （仅 Tab ③）
+    // hasIsValid = true 时多一列"是否为有效用户"（仅 Tab ①）
+    function renderClosedTable(data, hasValid, hasAgent, hasIsValid) {
+      const baseCols = 5;
+      const cols = baseCols + (hasValid ? 1 : 0) + (hasAgent ? 1 : 0) + (hasIsValid ? 1 : 0);
+
+      let colgroup;
+      if (hasValid) {
+        // Tab ②：6 列
+        colgroup = `
+          <col style="width:20%">
+          <col style="width:18%">
+          <col style="width:18%">
+          <col style="width:16%">
+          <col style="width:14%">
+          <col style="width:14%">
+        `;
+      } else if (hasAgent) {
+        // Tab ③：6 列（多一列代理邮箱）
+        colgroup = `
+          <col style="width:18%">
+          <col style="width:18%">
+          <col style="width:18%">
+          <col style="width:18%">
+          <col style="width:14%">
+          <col style="width:14%">
+        `;
+      } else if (hasIsValid) {
+        // Tab ①：6 列（多一列是否为有效用户）
+        colgroup = `
+          <col style="width:20%">
+          <col style="width:18%">
+          <col style="width:18%">
+          <col style="width:16%">
+          <col style="width:14%">
+          <col style="width:14%">
+        `;
+      } else {
+        // 兜底：5 列
+        colgroup = `
+          <col style="width:24%">
+          <col style="width:20%">
+          <col style="width:20%">
+          <col style="width:18%">
+          <col style="width:18%">
+        `;
+      }
+
+      return `
+        <div class="table-wrap">
+          <table class="data-table biz-table">
+            <colgroup>${colgroup}</colgroup>
+            <thead>
+              <tr>
+                <th>用户邮箱</th>
+                ${hasAgent ? '<th>代理邮箱</th>' : ''}
+                <th>开仓单号</th>
+                <th>平仓单号</th>
+                <th>平仓时间</th>
+                <th class="text-right">平仓交易额</th>
+                ${hasValid ? '<th class="text-center">用户有效类型</th>' : ''}
+                ${hasIsValid ? '<th class="text-center">是否为有效用户</th>' : ''}
+              </tr>
+            </thead>
+            <tbody>
+              ${data.length ? data.map((r) => `
+                <tr>
+                  <td><span class="link-text">${r.email}</span></td>
+                  ${hasAgent ? `<td><span class="agent-tag">${r.agentEmail}</span></td>` : ''}
+                  <td class="mono">${r.openNo}</td>
+                  <td class="mono">${r.closeNo}</td>
+                  <td class="muted">${r.closeTime}</td>
+                  <td class="text-right num strong">${fmtUSDT(r.closeAmt)}</td>
+                  ${hasValid ? `<td class="text-center">${validTypeTag(r.validType)}</td>` : ''}
+                  ${hasIsValid ? `<td class="text-center">${isValidTag(r.isValid)}</td>` : ''}
+                </tr>
+              `).join('') : emptyRow(cols)}
+            </tbody>
+          </table>
+        </div>
+        ${pagination(data.length)}
+      `;
+    }
+
+    /* ============== 空态行 + 分页 ============== */
+    function emptyRow(cols) {
+      return `
+        <tr class="empty-row">
+          <td colspan="${cols}">
+            <div class="empty-cell">
+              <svg viewBox="0 0 64 64" width="48" height="48" class="empty-svg">
+                <rect x="8" y="14" width="48" height="38" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+                <line x1="8" y1="24" x2="56" y2="24" stroke="#cbd5e1" stroke-width="1.5"/>
+                <circle cx="14" cy="19" r="1.4" fill="#cbd5e1"/>
+                <circle cx="18" cy="19" r="1.4" fill="#cbd5e1"/>
+                <circle cx="22" cy="19" r="1.4" fill="#cbd5e1"/>
+                <line x1="16" y1="36" x2="48" y2="36" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+                <line x1="16" y1="42" x2="40" y2="42" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>暂无资料</span>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+    function pagination(total) {
+      const totalPages = Math.max(1, Math.ceil(total / 20));
+      return `
+        <div class="pagination">
+          <span class="page-info">共 <b>${total}</b> 条 / <b>${totalPages}</b> 页</span>
+          <div class="page-size">
+            <select class="form-select page-size-sel">
+              <option>10 条/页</option>
+              <option selected>20 条/页</option>
+              <option>50 条/页</option>
+              <option>100 条/页</option>
+            </select>
+          </div>
+          <div class="page-btns">
+            <button class="page-btn" data-page="first" title="首页">«</button>
+            <button class="page-btn" data-page="prev"  title="上一页">‹</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn" data-page="next"  title="下一页">›</button>
+            <button class="page-btn" data-page="last"  title="末页">»</button>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ============== 主框架 ============== */
+    const PAGE_CONTENT = (function () {
+      // L1 + L2 都有下级代理，需要看「下级代理邀请用户的交易订单」顶层 Tab
+      // L3 是最底层，只看自己直邀的用户交易订单
+      // 注：VALID_OPEN / VALID_CLOSED / renderOpenTable(hasValid) 等逻辑保留，恢复时只需加回下方按钮
+      const role = getRole();
+      const showFullTopTabs = role === 'L1' || role === 'L2';
+      const topTabs = showFullTopTabs ? `
+        <div class="inv-tabs">
+          <button class="inv-tab active" data-toptab="my">我邀请用户的交易订单</button>
+          <button class="inv-tab" data-toptab="sub">我的下级代理邀请用户的交易订单</button>
+        </div>
+      ` : '';
+
+      return `
+        <div class="page-header">
+          <h1 class="page-title">用户交易订单</h1>
+        </div>
+
+        <div class="card sec-card">
+          ${topTabs}
+          <div id="topPane"></div>
+        </div>
+      `;
+    })();
+
+    /* ============== 状态 ============== */
+    // 顶层 Tab：my / valid / sub
+    let topTab = 'my';
+    // 各顶层 Tab 内的子 Tab 状态（开仓/平仓）独立保存
+    const subState = { my: 'open', valid: 'open', sub: 'open' };
+
+    function renderTopPane() {
+      const el = document.getElementById('topPane');
+      const sub = subState[topTab];
+      const hasValid   = topTab === 'valid';
+      const hasAgent   = topTab === 'sub';
+      const hasIsValid = topTab === 'my';
+
+      // 数据源映射
+      const dataMap = {
+        my:    { open: MY_OPEN,    closed: MY_CLOSED },
+        valid: { open: VALID_OPEN, closed: VALID_CLOSED },
+        sub:   { open: SUB_OPEN,   closed: SUB_CLOSED },
+      };
+      const data = dataMap[topTab][sub];
+
+      el.innerHTML = `
+        <div class="inv-tabs sub-tabs">
+          <button class="inv-tab ${sub === 'open' ? 'active' : ''}" data-subtab="open">开仓</button>
+          <button class="inv-tab ${sub === 'closed' ? 'active' : ''}" data-subtab="closed">平仓</button>
+        </div>
+        <div class="inv-pane">
+          ${filterBar(sub, hasValid, hasAgent)}
+          ${sub === 'open'
+            ? renderOpenTable(data, hasValid, hasAgent, hasIsValid)
+            : renderClosedTable(data, hasValid, hasAgent, hasIsValid)}
+        </div>
+      `;
+
+      // 子 Tab 切换
+      el.querySelectorAll('[data-subtab]').forEach((b) => {
+        b.addEventListener('click', () => {
+          subState[topTab] = b.dataset.subtab;
+          renderTopPane();
+        });
+      });
+
+      bindPaneActions();
+    }
+
+    function bindPaneActions() {
+      document.querySelectorAll('#topPane [data-act]').forEach((b) => {
+        b.addEventListener('click', () => {
+          const act = b.dataset.act;
+          if (act === 'reset') {
+            document.querySelectorAll('#topPane input, #topPane select').forEach((el) => { el.value = ''; });
+            toast('已重置筛选', 'success');
+          } else if (act === 'search') {
+            toast('已搜索', 'success');
+          }
+        });
+      });
+      document.querySelectorAll('#topPane .page-btn').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (b.classList.contains('active')) return;
+          toast('翻页（占位）', 'success');
+        });
+      });
+    }
+
+    window.onPageReady = function () {
+      // 顶层 Tab 切换（仅 L1 有）
+      document.querySelectorAll('[data-toptab]').forEach((b) => {
+        b.addEventListener('click', () => {
+          topTab = b.dataset.toptab;
+          document.querySelectorAll('[data-toptab]').forEach((x) => {
+            x.classList.toggle('active', x.dataset.toptab === topTab);
+          });
+          renderTopPane();
+        });
+      });
+      renderTopPane();
+    };
+
+    initLayout(PAGE_CONTENT);
+  </script>
+
+  <style>
+    /* —— Tab —— */
+    .sec-card { padding: 0; }
+    .inv-tabs {
+      display: flex; gap: 4px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .inv-tab {
+      padding: 13px 16px;
+      font-size: var(--fs-body);
+      color: var(--color-text-secondary);
+      background: transparent; border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-bottom: -1px;
+      font-family: inherit;
+    }
+    .inv-tab:hover { color: var(--color-primary); }
+    .inv-tab.active {
+      color: var(--color-primary); font-weight: var(--fw-semibold);
+      border-bottom-color: var(--color-primary);
+    }
+    /* 子 Tab：浅灰背景，字号略小 */
+    .sub-tabs {
+      padding: 0 14px;
+      background: #fafbfc;
+    }
+    .sub-tabs .inv-tab { padding: 10px 14px; font-size: var(--fs-body-sm); }
+    .inv-pane { padding: 16px 20px 18px; }
+
+    /* —— 筛选 —— */
+    .filter-row {
+      display: flex; align-items: center; gap: 10px;
+      flex-wrap: wrap; margin-bottom: 12px;
+    }
+    .filter-input { min-width: 160px; max-width: 200px; }
+    .filter-actions { margin-left: auto; display: flex; gap: 8px; }
+
+    .date-input-wrap {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 12px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px; background: #fff;
+    }
+    .date-input-wrap:focus-within { border-color: var(--color-primary); }
+    .date-ico { color: var(--color-text-muted); }
+    .dt-input {
+      border: none; outline: none;
+      font-size: var(--fs-body); color: var(--color-text);
+      background: transparent; width: 116px; font-family: inherit;
+    }
+    .dt-sep { color: var(--color-text-muted); padding: 0 2px; }
+
+    .btn-query, .btn-reset {
+      padding: 7px 16px; font-size: var(--fs-body); border-radius: 6px;
+      cursor: pointer; border: none; transition: all 0.15s;
+      font-family: inherit;
+    }
+    .btn-query { color: #fff; background: var(--color-primary); }
+    .btn-query:hover { background: var(--color-primary-hover); }
+    .btn-reset { color: var(--color-text); background: #fff; border: 1px solid var(--color-border); }
+    .btn-reset:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+    /* —— 业务表 —— */
+    .biz-table { table-layout: fixed; width: 100%; }
+    .biz-table th, .biz-table td {
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 11px 16px;
+    }
+    .muted { color: var(--color-text-muted); }
+    .mono {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      color: var(--color-text);
+      font-size: var(--fs-body-sm);
+    }
+    .num {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      color: var(--color-text);
+    }
+    .num.strong { color: var(--color-primary); font-weight: var(--fw-semibold); }
+    .link-text { color: var(--color-text); font-weight: var(--fw-medium); }
+
+    /* —— 有效类型 tag + 是否为有效用户 tag（共用 .vt-tag 基类）—— */
+    .vt-tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 10px;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+    }
+    /* 用户有效类型：当月有效 / 历史有效 */
+    .vt-month   { background: #e0f2fe; color: #0284c7; }
+    .vt-history { background: #fef3c7; color: #b45309; }
+    /* 是否为有效用户：是 / 否 */
+    .vt-yes     { background: rgba(0,200,150,0.12); color: var(--color-primary); }
+    .vt-no      { background: #e5e7eb; color: #4b5563; }
+
+    /* 空态 */
+    .empty-row td { padding: 0; border-bottom: none; }
+    .empty-cell {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      padding: 56px 20px;
+      color: var(--color-text-muted);
+      font-size: var(--fs-meta);
+    }
+    .empty-svg { opacity: 0.7; }
+
+    /* 分页 */
+    .pagination {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 14px; margin-top: 14px;
+    }
+    .page-info { font-size: var(--fs-meta); color: var(--color-text-secondary); }
+    .page-info b { color: var(--color-text); }
+    .page-size-sel {
+      padding: 5px 24px 5px 10px;
+      font-size: var(--fs-body-sm);
+      border-radius: 4px;
+      border: 1px solid var(--color-border);
+      background: #fff; cursor: pointer; font-family: inherit;
+    }
+    .page-btns { display: flex; gap: 4px; }
+    .page-btn {
+      min-width: 28px; height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--color-border);
+      background: #fff; color: var(--color-text);
+      cursor: pointer; border-radius: 4px;
+      font-size: var(--fs-body-sm);
+      transition: all 0.15s; font-family: inherit;
+    }
+    .page-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .page-btn.active {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff; cursor: default;
+    }
+  </style>
+</body>
+</html>

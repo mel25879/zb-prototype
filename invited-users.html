@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>我的邀请</title>
+  <link rel="stylesheet" href="assets/css/common.css?v=7">
+</head>
+<body data-title="我的邀请">
+  <div id="app"></div>
+  <script src="assets/js/common.js?v=7"></script>
+  <script>
+    /* =================================================================
+       我的邀请 · 按需求文档实现
+       Tab 结构：
+         L1（一级代理）：3 个 Tab
+           ① 我的邀请用户         （L1 / L2 都有）
+           ② 我的有效邀请用户     （仅 L1）
+           ③ 我的下级代理邀请用户 （仅 L1）
+         L2（二级代理）：仅 ① 一个 Tab（不渲染 Tab 条）
+       ================================================================= */
+
+    /* ============== 角色读取 ============== */
+    function getRole() {
+      try { return localStorage.getItem('zb_agent_role') || 'L1'; }
+      catch (e) { return 'L1'; }
+    }
+
+    /* ============== Toast / 工具 ============== */
+    function toast(msg, type) {
+      const t = document.createElement('div');
+      t.className = `toast toast-${type || 'success'}`;
+      t.innerHTML = `<span class="toast-ico">${type === 'danger' ? '✕' : '✓'}</span>${msg}`;
+      document.body.appendChild(t);
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 250); }, 2000);
+    }
+    function fmtUSDT(v) {
+      return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
+    }
+
+    /* ============== Mock 数据 ============== */
+    // ① 我的邀请用户：直接邀请的用户+代理（L1/L2 都看得到）
+    // cumulativeDeposit:     累计充值金额（用于"是否有效"判定：≥ 20 USDT）
+    // cumulativeOpenVolume:  累计开仓交易额（用户从注册到现在的总开仓量）
+    // monthOpenVolume:       当月开仓交易额（用于"是否有效"判定：> 5,000 USDT）
+    // isValid:               是否有效（累计充值 ≥ 20 USDT 且 当月开仓交易额 > 5,000 USDT）
+    const MY_USERS = [
+      { uid: 'U2026001', email: '202605280@qq.com',   registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 50000, cumulativeOpenVolume: 80200, monthOpenVolume: 55555, isValid: true  },
+      { uid: 'U2026002', email: '202605285@qq.com',   registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 10,    cumulativeOpenVolume: 0,     monthOpenVolume: 0,     isValid: false },
+      { uid: 'U2026003', email: '20260526@qq.com',    registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 0,     cumulativeOpenVolume: 55555, monthOpenVolume: 55555, isValid: false },
+      { uid: 'U2026004', email: 'helen***@gmail.com', registerTime: '2026-05-20 11:23:00', cumulativeDeposit: 1200,  cumulativeOpenVolume: 18500, monthOpenVolume: 12000, isValid: true  },
+      { uid: 'U2026005', email: 'lucas***@163.com',   registerTime: '2026-05-18 08:55:00', cumulativeDeposit: 350,   cumulativeOpenVolume: 9300,  monthOpenVolume: 7800,  isValid: true  },
+    ];
+
+    // ② 我的有效邀请用户（L1）：当月有效 / 历史有效
+    const VALID_USERS = [
+      { uid: 'V2026001', email: '202605280@qq.com', registerTime: '2026-05-31 15:34:10', firstDepositTime: '2026-05-31 15:34:10', firstDepositAmt: 47777, monthOpenVolume: 55555, validType: '当月有效' },
+      { uid: 'V2026002', email: '20260526@qq.com',  registerTime: '2026-04-20 15:34:10', firstDepositTime: '2026-04-21 15:34:10', firstDepositAmt: 47,    monthOpenVolume: 55555, validType: '历史有效' },
+      { uid: 'V2026003', email: '202604121@qq.com', registerTime: '2026-04-05 12:30:00', firstDepositTime: '2026-04-06 14:00:00', firstDepositAmt: 80,    monthOpenVolume: 6000,  validType: '当月有效' },
+    ];
+
+    // ③ 我的下级代理邀请用户（L1）
+    const SUB_AGENT_USERS = [
+      { email: '202605283@qq.com',   agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 50000, cumulativeOpenVolume: 78000, monthOpenVolume: 55555 },
+      { email: '202605284@qq.com',   agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 10,    cumulativeOpenVolume: 0,     monthOpenVolume: 0     },
+      { email: '20260522@qq.com',    agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 0,     cumulativeOpenVolume: 55555, monthOpenVolume: 55555 },
+      { email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',  registerTime: '2026-05-17 09:12:00', cumulativeDeposit: 600,   cumulativeOpenVolume: 14200, monthOpenVolume: 8500  },
+    ];
+
+    /* ============== 渲染工具 ============== */
+    // 金额单元格：0/空 时显示 "—"
+    function moneyCell(v) {
+      if (v == null || v === '' || Number(v) === 0) return '<span class="muted">—</span>';
+      return fmtUSDT(v);
+    }
+    // 时间单元格：空时显示 "—"
+    function timeCell(v) {
+      if (!v) return '<span class="muted">—</span>';
+      return `<span class="muted">${v}</span>`;
+    }
+    // 有效类型 tag（当月有效 / 历史有效）
+    function validTypeTag(type) {
+      const cls = type === '当月有效' ? 'vt-month' : 'vt-history';
+      return `<span class="vt-tag ${cls}">${type}</span>`;
+    }
+    // 是否有效 tag（是 / 否）
+    function isValidTag(valid) {
+      return valid
+        ? '<span class="vt-tag vt-yes">是</span>'
+        : '<span class="vt-tag vt-no">否</span>';
+    }
+
+    /* ============== Tab ①：我的邀请用户 ============== */
+    function renderMyUsersTab() {
+      return `
+        <div class="filter-row">
+          <input type="text" class="form-input filter-input" id="f1_uid" placeholder="用户ID" />
+          <select class="form-select filter-input" id="f1_valid">
+            <option value="">是否为有效用户</option>
+            <option value="1">是</option>
+            <option value="0">否</option>
+          </select>
+          <div class="filter-actions">
+            <button class="btn-reset" data-tab="my" data-act="reset">重置</button>
+            <button class="btn-query" data-tab="my" data-act="search">搜索</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table biz-table">
+            <colgroup>
+              <col style="width:22%">
+              <col style="width:16%">
+              <col style="width:16%">
+              <col style="width:17%">
+              <col style="width:17%">
+              <col style="width:12%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>用户邮箱</th>
+                <th>注册时间</th>
+                <th class="text-right">累计充值金额</th>
+                <th class="text-right">累计开仓交易额</th>
+                <th class="text-right">当月开仓交易额</th>
+                <th class="text-center">是否为有效用户</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${MY_USERS.length ? MY_USERS.map((u) => `
+                <tr>
+                  <td><span class="link-text">${u.email}</span></td>
+                  <td>${timeCell(u.registerTime)}</td>
+                  <td class="text-right num">${moneyCell(u.cumulativeDeposit)}</td>
+                  <td class="text-right num">${moneyCell(u.cumulativeOpenVolume)}</td>
+                  <td class="text-right num strong">${moneyCell(u.monthOpenVolume)}</td>
+                  <td class="text-center">${isValidTag(u.isValid)}</td>
+                </tr>
+              `).join('') : emptyRow(6)}
+            </tbody>
+          </table>
+        </div>
+
+        ${pagination(MY_USERS.length)}
+      `;
+    }
+
+    /* ============== Tab ②：我的有效邀请用户（L1） ============== */
+    function renderValidUsersTab() {
+      // 顶部 KPI：当月有效人数 / 历史有效人数
+      const monthCnt   = VALID_USERS.filter(u => u.validType === '当月有效').length;
+      const historyCnt = VALID_USERS.filter(u => u.validType === '历史有效').length;
+
+      return `
+        <div class="kpi-bar">
+          <div class="kpi-bar-item">
+            <span class="kpi-bar-label">当月有效人数</span>
+            <span class="kpi-bar-num">${monthCnt}</span>
+            <span class="kpi-bar-unit">人</span>
+          </div>
+          <div class="kpi-bar-sep"></div>
+          <div class="kpi-bar-item">
+            <span class="kpi-bar-label">历史有效人数</span>
+            <span class="kpi-bar-num">${historyCnt}</span>
+            <span class="kpi-bar-unit">人</span>
+          </div>
+        </div>
+
+        <div class="filter-row">
+          <input type="text" class="form-input filter-input" id="f2_uid" placeholder="用户ID" />
+          <select class="form-select filter-input" id="f2_type">
+            <option value="">全部有效类型</option>
+            <option value="当月有效">当月有效</option>
+            <option value="历史有效">历史有效</option>
+          </select>
+          <div class="filter-actions">
+            <button class="btn-reset" data-tab="valid" data-act="reset">重置</button>
+            <button class="btn-query" data-tab="valid" data-act="search">搜索</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table biz-table">
+            <colgroup>
+              <col style="width:22%">
+              <col style="width:16%">
+              <col style="width:16%">
+              <col style="width:14%">
+              <col style="width:18%">
+              <col style="width:14%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>用户邮箱</th>
+                <th>注册时间</th>
+                <th>首次充值时间</th>
+                <th class="text-right">首次充值金额</th>
+                <th class="text-right">当月开仓交易额</th>
+                <th class="text-center">有效类型</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${VALID_USERS.length ? VALID_USERS.map((u) => `
+                <tr>
+                  <td><span class="link-text">${u.email}</span></td>
+                  <td>${timeCell(u.registerTime)}</td>
+                  <td>${timeCell(u.firstDepositTime)}</td>
+                  <td class="text-right num">${moneyCell(u.firstDepositAmt)}</td>
+                  <td class="text-right num strong">${moneyCell(u.monthOpenVolume)}</td>
+                  <td class="text-center">${validTypeTag(u.validType)}</td>
+                </tr>
+              `).join('') : emptyRow(6)}
+            </tbody>
+          </table>
+        </div>
+
+        ${pagination(VALID_USERS.length)}
+      `;
+    }
+
+    /* ============== Tab ③：我的下级代理邀请用户（L1） ============== */
+    function renderSubAgentUsersTab() {
+      return `
+        <div class="filter-row">
+          <input type="text" class="form-input filter-input" id="f3_email" placeholder="用户邮箱" />
+          <input type="text" class="form-input filter-input" id="f3_agent" placeholder="代理邮箱" />
+          <div class="filter-actions">
+            <button class="btn-reset" data-tab="sub" data-act="reset">重置</button>
+            <button class="btn-query" data-tab="sub" data-act="search">搜索</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table biz-table">
+            <colgroup>
+              <col style="width:20%">
+              <col style="width:18%">
+              <col style="width:16%">
+              <col style="width:15%">
+              <col style="width:16%">
+              <col style="width:15%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>用户邮箱</th>
+                <th>他的代理邮箱</th>
+                <th>注册时间</th>
+                <th class="text-right">累计充值金额</th>
+                <th class="text-right">累计开仓交易额</th>
+                <th class="text-right">当月开仓交易额</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${SUB_AGENT_USERS.length ? SUB_AGENT_USERS.map((u) => `
+                <tr>
+                  <td><span class="link-text">${u.email}</span></td>
+                  <td><span class="agent-tag">${u.agentEmail}</span></td>
+                  <td>${timeCell(u.registerTime)}</td>
+                  <td class="text-right num">${moneyCell(u.cumulativeDeposit)}</td>
+                  <td class="text-right num">${moneyCell(u.cumulativeOpenVolume)}</td>
+                  <td class="text-right num strong">${moneyCell(u.monthOpenVolume)}</td>
+                </tr>
+              `).join('') : emptyRow(6)}
+            </tbody>
+          </table>
+        </div>
+
+        ${pagination(SUB_AGENT_USERS.length)}
+      `;
+    }
+
+    /* ============== 公用：空态行 + 分页 ============== */
+    function emptyRow(cols) {
+      return `
+        <tr class="empty-row">
+          <td colspan="${cols}">
+            <div class="empty-cell">
+              <svg viewBox="0 0 64 64" width="48" height="48" class="empty-svg">
+                <rect x="8" y="14" width="48" height="38" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+                <line x1="8" y1="24" x2="56" y2="24" stroke="#cbd5e1" stroke-width="1.5"/>
+                <circle cx="14" cy="19" r="1.4" fill="#cbd5e1"/>
+                <circle cx="18" cy="19" r="1.4" fill="#cbd5e1"/>
+                <circle cx="22" cy="19" r="1.4" fill="#cbd5e1"/>
+                <line x1="16" y1="36" x2="48" y2="36" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+                <line x1="16" y1="42" x2="40" y2="42" stroke="#e2e8f0" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>暂无资料</span>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+    function pagination(total) {
+      const totalPages = Math.max(1, Math.ceil(total / 20));
+      return `
+        <div class="pagination">
+          <span class="page-info">共 <b>${total}</b> 条 / <b>${totalPages}</b> 页</span>
+          <div class="page-size">
+            <select class="form-select page-size-sel">
+              <option>10 条/页</option>
+              <option selected>20 条/页</option>
+              <option>50 条/页</option>
+              <option>100 条/页</option>
+            </select>
+          </div>
+          <div class="page-btns">
+            <button class="page-btn" data-page="first" title="首页">«</button>
+            <button class="page-btn" data-page="prev"  title="上一页">‹</button>
+            <button class="page-btn active">1</button>
+            <button class="page-btn" data-page="next"  title="下一页">›</button>
+            <button class="page-btn" data-page="last"  title="末页">»</button>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ============== 主框架 ============== */
+    const PAGE_CONTENT = (function () {
+      // L1 + L2 都有下级代理，需要看「我的下级代理邀请用户」Tab
+      // L3 是最底层，只能看自己直邀的用户
+      // 注：renderValidUsersTab / VALID_USERS / switchTab('valid') 等代码均保留，恢复时只需加回下方按钮
+      const role = getRole();
+      const showFullTabs = role === 'L1' || role === 'L2';
+      const tabBar = showFullTabs ? `
+        <div class="inv-tabs">
+          <button class="inv-tab active" data-tab="my">我的邀请用户</button>
+          <button class="inv-tab" data-tab="sub">我的下级代理邀请用户</button>
+        </div>
+      ` : '';
+
+      return `
+        <div class="page-header">
+          <h1 class="page-title">我的邀请</h1>
+        </div>
+
+        <div class="card sec-card">
+          ${tabBar}
+          <div class="inv-pane" id="invPane"></div>
+        </div>
+      `;
+    })();
+
+    /* ============== 状态 + 切换 ============== */
+    let currentTab = 'my';
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.inv-tab').forEach((b) => {
+        b.classList.toggle('active', b.dataset.tab === tab);
+      });
+      const el = document.getElementById('invPane');
+      let html = '';
+      if (tab === 'valid') html = renderValidUsersTab();
+      else if (tab === 'sub') html = renderSubAgentUsersTab();
+      else html = renderMyUsersTab();
+      el.innerHTML = html;
+      bindPaneActions();
+    }
+
+    function bindPaneActions() {
+      // 搜索 / 重置
+      document.querySelectorAll('.btn-query, .btn-reset').forEach((b) => {
+        b.addEventListener('click', () => {
+          const act = b.dataset.act;
+          if (act === 'reset') {
+            // 重置当前 Tab 内的所有 input/select
+            document.querySelectorAll('#invPane input, #invPane select').forEach((el) => {
+              el.value = '';
+            });
+            toast('已重置筛选条件', 'success');
+          } else {
+            toast('已搜索', 'success');
+          }
+        });
+      });
+      // 翻页占位
+      document.querySelectorAll('.page-btn').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (b.classList.contains('active')) return;
+          toast('翻页（占位）', 'success');
+        });
+      });
+    }
+
+    window.onPageReady = function () {
+      // L1 才有 Tab 切换
+      document.querySelectorAll('.inv-tab').forEach((b) => {
+        b.addEventListener('click', () => switchTab(b.dataset.tab));
+      });
+      // 默认进入第一个 Tab
+      switchTab('my');
+    };
+
+    initLayout(PAGE_CONTENT);
+  </script>
+
+  <style>
+    /* —— Tab —— */
+    .sec-card { padding: 0; }
+    .inv-tabs {
+      display: flex; gap: 4px;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    .inv-tab {
+      padding: 13px 16px;
+      font-size: var(--fs-body);
+      color: var(--color-text-secondary);
+      background: transparent; border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-bottom: -1px;
+      font-family: inherit;
+    }
+    .inv-tab:hover { color: var(--color-primary); }
+    .inv-tab.active {
+      color: var(--color-primary); font-weight: var(--fw-semibold);
+      border-bottom-color: var(--color-primary);
+    }
+    .inv-pane { padding: 16px 20px 18px; }
+
+    /* —— KPI 横向条（Tab ② 顶部）—— */
+    .kpi-bar {
+      display: flex; align-items: center;
+      padding: 12px 18px;
+      background: linear-gradient(90deg, rgba(0,200,150,0.06) 0%, rgba(0,200,150,0) 100%);
+      border-left: 3px solid var(--color-primary);
+      border-radius: 4px;
+      margin-bottom: 12px;
+      gap: 28px;
+    }
+    .kpi-bar-item { display: flex; align-items: baseline; gap: 6px; }
+    .kpi-bar-label {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+    }
+    .kpi-bar-num {
+      font-family: ui-monospace, monospace;
+      font-size: var(--fs-h2);
+      font-weight: var(--fw-bold);
+      color: var(--color-primary);
+    }
+    .kpi-bar-unit {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+    }
+    .kpi-bar-sep {
+      width: 1px; height: 22px;
+      background: var(--color-border);
+    }
+
+    /* —— 筛选条 —— */
+    .filter-row {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .filter-input { min-width: 180px; max-width: 220px; }
+    .filter-actions { margin-left: auto; display: flex; gap: 8px; }
+
+    .btn-query, .btn-reset {
+      padding: 7px 18px; font-size: var(--fs-body); border-radius: 6px;
+      cursor: pointer; border: none;
+      transition: all 0.15s; font-family: inherit;
+    }
+    .btn-query { color: #fff; background: var(--color-primary); }
+    .btn-query:hover { background: var(--color-primary-hover); }
+    .btn-reset {
+      color: var(--color-text); background: #fff;
+      border: 1px solid var(--color-border);
+    }
+    .btn-reset:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+    /* —— 业务表 —— */
+    .biz-table { table-layout: fixed; width: 100%; }
+    .biz-table th, .biz-table td {
+      vertical-align: middle;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 11px 16px;
+    }
+    .muted { color: var(--color-text-muted); }
+    .num {
+      font-family: ui-monospace, 'SF Mono', Consolas, monospace;
+      color: var(--color-text);
+    }
+    .num.strong { color: var(--color-primary); font-weight: var(--fw-semibold); }
+    .link-text {
+      color: var(--color-text);
+      font-weight: var(--fw-medium);
+    }
+    .agent-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(58,161,255,0.08);
+      color: #3aa1ff;
+      border-radius: 3px;
+      font-size: var(--fs-body-sm);
+      font-family: ui-monospace, monospace;
+    }
+
+    /* —— 有效类型 tag + 是否有效 tag（共用 .vt-tag 基类） —— */
+    .vt-tag {
+      display: inline-block;
+      padding: 2px 9px;
+      border-radius: 10px;
+      font-size: var(--fs-body-sm);
+      font-weight: var(--fw-semibold);
+    }
+    /* 有效类型：当月有效 / 历史有效（Tab ② 用） */
+    .vt-month   { background: #e0f2fe; color: #0284c7; }
+    .vt-history { background: #fef3c7; color: #b45309; }
+    /* 是否有效：是 / 否（Tab ① 用） */
+    .vt-yes     { background: rgba(0,200,150,0.12); color: var(--color-primary); }
+    .vt-no      { background: #e5e7eb; color: #4b5563; }
+
+    /* —— 空态 —— */
+    .empty-row td { padding: 0; border-bottom: none; }
+    .empty-cell {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      padding: 56px 20px;
+      color: var(--color-text-muted);
+      font-size: var(--fs-meta);
+    }
+    .empty-svg { opacity: 0.7; }
+
+    /* —— 分页 —— */
+    .pagination {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .page-info {
+      font-size: var(--fs-meta);
+      color: var(--color-text-secondary);
+    }
+    .page-info b { color: var(--color-text); }
+    .page-size-sel {
+      padding: 5px 24px 5px 10px;
+      font-size: var(--fs-body-sm);
+      border-radius: 4px;
+      border: 1px solid var(--color-border);
+      background: #fff;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .page-btns { display: flex; gap: 4px; }
+    .page-btn {
+      min-width: 28px; height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--color-border);
+      background: #fff;
+      color: var(--color-text);
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: var(--fs-body-sm);
+      transition: all 0.15s;
+      font-family: inherit;
+    }
+    .page-btn:hover {
+      border-color: var(--color-primary);
+      color: var(--color-primary);
+    }
+    .page-btn.active {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      color: #fff;
+      cursor: default;
+    }
+  </style>
+</body>
+</html>
