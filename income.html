@@ -78,11 +78,11 @@
       { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518023', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '—',                  status: '结算中' },
       { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518024', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
       // 历史用户单笔小额平仓：触发"待结算"规则（当月累计平仓 ≤ 1,000 USDT）
-      { uid: 'U2026107', email: 'frank***@qq.com',    orderNo: 'TX20260530011', orderTime: '2026-05-30 09:21:00', orderAmt: 400,   fee: -4,   rebateRate: 80, rebateAmt: 3.2, settleTime: '—',                  status: '待结算' },
-      { uid: 'U2026101', email: 'alice***@gmail.com', orderNo: 'TX20260517019', orderTime: '2026-05-17 12:30:00', orderAmt: 50000, fee: -500, rebateRate: 80, rebateAmt: 400, settleTime: '2026-05-18 00:00:10', status: '已结算' },
-      { uid: 'U2026102', email: 'bob***@outlook.com', orderNo: 'TX20260515008', orderTime: '2026-05-15 21:10:00', orderAmt: 20000, fee: -200, rebateRate: 80, rebateAmt: 160, settleTime: '—',                  status: '结算中' },
+      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260530011', orderTime: '2026-05-30 09:21:00', orderAmt: 400,   fee: -4,   rebateRate: 80, rebateAmt: 3.2, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026101', email: 'alice@gmail.com', orderNo: 'TX20260517019', orderTime: '2026-05-17 12:30:00', orderAmt: 50000, fee: -500, rebateRate: 80, rebateAmt: 400, settleTime: '2026-05-18 00:00:10', status: '已结算' },
+      { uid: 'U2026102', email: 'bob@outlook.com', orderNo: 'TX20260515008', orderTime: '2026-05-15 21:10:00', orderAmt: 20000, fee: -200, rebateRate: 80, rebateAmt: 160, settleTime: '—',                  status: '结算中' },
       // 另一条历史用户的待结算
-      { uid: 'U2026107', email: 'frank***@qq.com',    orderNo: 'TX20260512007', orderTime: '2026-05-12 16:08:00', orderAmt: 200,   fee: -2,   rebateRate: 80, rebateAmt: 1.6, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260512007', orderTime: '2026-05-12 16:08:00', orderAmt: 200,   fee: -2,   rebateRate: 80, rebateAmt: 1.6, settleTime: '—',                  status: '待结算' },
     ];
 
     // ① 开仓佣金（与平仓表对应：同一用户的开仓订单，开仓时间略早于平仓）
@@ -90,10 +90,10 @@
       { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518021', orderTime: '2026-05-29 10:12:30', orderAmt: 10000, fee: -50, rebateRate: 80, rebateAmt: 40,  settleTime: '—',                  status: '结算中' },
       { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518022', orderTime: '2026-05-29 10:18:45', orderAmt: 10000, fee: -50, rebateRate: 80, rebateAmt: 40,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
       // 历史用户单笔小额开仓：当月累计开仓亦较小，触发"待结算"
-      { uid: 'U2026107', email: 'frank***@qq.com',    orderNo: 'TX20260528015', orderTime: '2026-05-28 14:55:00', orderAmt: 400,   fee: -2,   rebateRate: 80, rebateAmt: 1.6, settleTime: '—',                  status: '待结算' },
-      { uid: 'U2026101', email: 'alice***@gmail.com', orderNo: 'TX20260516022', orderTime: '2026-05-16 09:40:18', orderAmt: 50000, fee: -250, rebateRate: 80, rebateAmt: 200, settleTime: '2026-05-18 00:00:10', status: '已结算' },
-      { uid: 'U2026102', email: 'bob***@outlook.com', orderNo: 'TX20260514099', orderTime: '2026-05-14 18:22:30', orderAmt: 20000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '—',                  status: '结算中' },
-      { uid: 'U2026107', email: 'frank***@qq.com',    orderNo: 'TX20260511039', orderTime: '2026-05-11 11:30:00', orderAmt: 200,   fee: -1,   rebateRate: 80, rebateAmt: 0.8, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260528015', orderTime: '2026-05-28 14:55:00', orderAmt: 400,   fee: -2,   rebateRate: 80, rebateAmt: 1.6, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026101', email: 'alice@gmail.com', orderNo: 'TX20260516022', orderTime: '2026-05-16 09:40:18', orderAmt: 50000, fee: -250, rebateRate: 80, rebateAmt: 200, settleTime: '2026-05-18 00:00:10', status: '已结算' },
+      { uid: 'U2026102', email: 'bob@outlook.com', orderNo: 'TX20260514099', orderTime: '2026-05-14 18:22:30', orderAmt: 20000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '—',                  status: '结算中' },
+      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260511039', orderTime: '2026-05-11 11:30:00', orderAmt: 200,   fee: -1,   rebateRate: 80, rebateAmt: 0.8, settleTime: '—',                  status: '待结算' },
     ];
 
     // Tab ②：我获得的分成佣金（按开仓 / 平仓拆分两个子表）
@@ -102,16 +102,16 @@
     const SHARE_DATA_CLOSE = [
       { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518023', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, orderComm: 80, shareRate: 30, myShare: 24,  settleTime: '—',                  status: '结算中' },
       { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518024', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, orderComm: 80, shareRate: 30, myShare: 24,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
-      { uid: 'U2026107', email: 'frank***@qq.com',    agentEmail: 'sub***@gmail.com', orderNo: 'TX20260529008', orderTime: '2026-05-29 14:20:00', orderAmt: 500,   fee: -5,   orderComm: 4,  shareRate: 50, myShare: 2,   settleTime: '—',                  status: '待结算' },
-      { uid: 'U2026104', email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com', orderNo: 'TX20260517005', orderTime: '2026-05-17 11:30:00', orderAmt: 5000,  fee: -50,  orderComm: 40, shareRate: 70, myShare: 28,  settleTime: '2026-05-18 00:00:10', status: '已结算' },
+      { uid: 'U2026107', email: 'frank@qq.com',    agentEmail: 'sub@gmail.com', orderNo: 'TX20260529008', orderTime: '2026-05-29 14:20:00', orderAmt: 500,   fee: -5,   orderComm: 4,  shareRate: 50, myShare: 2,   settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026104', email: 'helen@gmail.com', agentEmail: 'sub@gmail.com', orderNo: 'TX20260517005', orderTime: '2026-05-17 11:30:00', orderAmt: 5000,  fee: -50,  orderComm: 40, shareRate: 70, myShare: 28,  settleTime: '2026-05-18 00:00:10', status: '已结算' },
     ];
 
     // ② 开仓分成（与平仓分成对应）
     const SHARE_DATA_OPEN = [
       { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518021', orderTime: '2026-05-29 10:12:30', orderAmt: 10000, fee: -50, orderComm: 40, shareRate: 30, myShare: 12,  settleTime: '—',                  status: '结算中' },
       { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518022', orderTime: '2026-05-29 10:18:45', orderAmt: 10000, fee: -50, orderComm: 40, shareRate: 30, myShare: 12,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
-      { uid: 'U2026107', email: 'frank***@qq.com',    agentEmail: 'sub***@gmail.com', orderNo: 'TX20260528015', orderTime: '2026-05-28 14:55:00', orderAmt: 500,   fee: -2,   orderComm: 1.6, shareRate: 50, myShare: 0.8, settleTime: '—',                  status: '待结算' },
-      { uid: 'U2026104', email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com', orderNo: 'TX20260516011', orderTime: '2026-05-16 08:45:20', orderAmt: 5000,  fee: -25,  orderComm: 20, shareRate: 70, myShare: 14,  settleTime: '2026-05-18 00:00:10', status: '已结算' },
+      { uid: 'U2026107', email: 'frank@qq.com',    agentEmail: 'sub@gmail.com', orderNo: 'TX20260528015', orderTime: '2026-05-28 14:55:00', orderAmt: 500,   fee: -2,   orderComm: 1.6, shareRate: 50, myShare: 0.8, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026104', email: 'helen@gmail.com', agentEmail: 'sub@gmail.com', orderNo: 'TX20260516011', orderTime: '2026-05-16 08:45:20', orderAmt: 5000,  fee: -25,  orderComm: 20, shareRate: 70, myShare: 14,  settleTime: '2026-05-18 00:00:10', status: '已结算' },
     ];
 
     /* ============== 子 Tab 方向 → 字段标签映射 ============== */
