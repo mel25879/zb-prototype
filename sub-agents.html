@@ -228,13 +228,11 @@
             <div class="form-line">
               <label>新的分成比例 <span class="required">*</span></label>
               <div class="rate-input-row">
-                <input type="number" id="newRate" min="0" max="100" step="1" value="100" />
+                <input type="number" id="newRate" min="0" max="100" step="10" required />
                 <span class="rate-suffix">%</span>
               </div>
-              <input type="range" id="rateSlider" min="0" max="100" step="1" value="100" class="rate-slider" />
-              <div class="rate-marks">
-                <span>0%</span><span>50%</span><span>100%</span>
-              </div>
+              <div class="form-error" id="rateError" style="display:none">请输入 10 的倍数</div>
+              <div class="form-hint">仅支持 10 的倍数，如 10%、20%、30% …… 100%</div>
             </div>
 
             <div class="rate-tip">
@@ -316,8 +314,9 @@
       document.getElementById('rateTargetId').textContent = agent.agentId;
       document.getElementById('rateTargetEmail').textContent = agent.email;
       document.getElementById('curRate').textContent = `${agent.shareRate}%`;
-      document.getElementById('newRate').value = agent.shareRate;
-      document.getElementById('rateSlider').value = agent.shareRate;
+      // 输入框默认为空，强制用户重新输入新比例
+      document.getElementById('newRate').value = '';
+      document.getElementById('rateError').style.display = 'none';
       openModal('rateModal');
     }
 
@@ -365,25 +364,41 @@
         el.addEventListener('click', () => closeModal('rateModal'));
       });
 
-      // 滑块 ↔ 数字输入 双向同步 + 0-100 边界
+      // 输入框：实时限制只能输入数字 + 0-100 边界 + 清除红字提示
       const newRate = document.getElementById('newRate');
-      const slider  = document.getElementById('rateSlider');
       newRate.addEventListener('input', () => {
+        // 去掉非数字字符（含 .、e 等）
+        newRate.value = newRate.value.replace(/[^\d]/g, '');
         let v = parseInt(newRate.value, 10);
-        if (isNaN(v)) v = 0;
-        v = Math.max(0, Math.min(100, v));
-        newRate.value = v;
-        slider.value  = v;
-      });
-      slider.addEventListener('input', () => {
-        newRate.value = slider.value;
+        if (!isNaN(v) && v > 100) newRate.value = 100;
+        // 输入时清除错误提示
+        document.getElementById('rateError').style.display = 'none';
       });
 
-      // 保存：0-100 校验 + 持久化（按 agentId）
+      // 保存：必填 + 0-100 + 10 的倍数 三重校验
       document.getElementById('btnSaveRate').addEventListener('click', () => {
-        const v = parseInt(document.getElementById('newRate').value, 10);
+        const raw = document.getElementById('newRate').value.trim();
+        const errBox = document.getElementById('rateError');
+        // 必填校验
+        if (raw === '') {
+          errBox.textContent = '请输入分成比例';
+          errBox.style.display = 'block';
+          newRate.focus();
+          return;
+        }
+        const v = parseInt(raw, 10);
         if (isNaN(v) || v < 0 || v > 100) {
-          return toast('请输入 0-100 的整数', 'danger');
+          errBox.textContent = '请输入 0-100 的整数';
+          errBox.style.display = 'block';
+          newRate.focus();
+          return;
+        }
+        // 必须为 10 的倍数（10/20/30...100，0 也允许 = 不分成）
+        if (v % 10 !== 0) {
+          errBox.textContent = `仅支持 10 的倍数，如 ${Math.floor(v/10)*10}% 或 ${Math.ceil(v/10)*10}%`;
+          errBox.style.display = 'block';
+          newRate.focus();
+          return;
         }
         const agent = SUB_AGENTS.find((a) => a.agentId === editingId);
         if (!agent) return;
@@ -671,40 +686,23 @@
       pointer-events: none;
     }
 
-    /* 滑块 */
-    .rate-slider {
-      width: 100%;
-      margin-top: 4px;
-      -webkit-appearance: none;
-      appearance: none;
-      height: 6px;
-      border-radius: 3px;
-      background: linear-gradient(90deg, #e5e7eb 0%, #fef3c7 50%, rgba(0,200,150,0.4) 100%);
-      outline: none;
+    /* 必填校验错误提示 */
+    .form-error {
+      margin-top: 6px;
+      font-size: var(--fs-meta);
+      color: var(--color-danger, #dc2626);
+      line-height: 1.4;
     }
-    .rate-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 18px; height: 18px;
-      border-radius: 50%;
-      background: #fff;
-      border: 2px solid var(--color-primary);
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0,200,150,0.4);
-    }
-    .rate-slider::-moz-range-thumb {
-      width: 18px; height: 18px;
-      border-radius: 50%;
-      background: #fff;
-      border: 2px solid var(--color-primary);
-      cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0,200,150,0.4);
-    }
-    .rate-marks {
-      display: flex; justify-content: space-between;
-      font-size: var(--fs-tag);
+    /* 输入框下方灰色帮助提示（约束说明） */
+    .form-hint {
+      margin-top: 6px;
+      font-size: var(--fs-meta);
       color: var(--color-text-muted);
-      margin-top: 2px;
+      line-height: 1.4;
+    }
+    /* 输入框校验失败时的红色边框（基于错误提示是否显示） */
+    .rate-input-row:has(+ .form-error[style*="block"]) input {
+      border-color: var(--color-danger, #dc2626);
     }
 
     .rate-tip {
