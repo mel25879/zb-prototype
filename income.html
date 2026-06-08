@@ -54,6 +54,15 @@
       };
       return `<span class="st-tag ${map[status] || ''}">${status}</span>`;
     }
+    // 订单状态 tag：持仓（蓝）/ 部分平仓（橙）/ 已平仓（灰）
+    function orderStatusTag(status) {
+      const map = {
+        '持仓':     'os-holding',
+        '部分平仓': 'os-partial',
+        '已平仓':   'os-closed',
+      };
+      return `<span class="st-tag ${map[status] || ''}">${status || '—'}</span>`;
+    }
     // 备注：待结算订单显示原因；其它状态显示 "—"
     // 简短文案展示在表格内，完整说明通过 title 在 hover 时显示
     // incomeType: 'rebate'（Tab ① 返佣）| 'share'（Tab ② 分成）
@@ -74,44 +83,48 @@
     //   开仓 (open ) → 开仓单号 / 开仓时间 / 开仓交易额 / 开仓手续费
 
     // ① 平仓佣金（历史已有数据）
+    // 新增字段：openNo（关联的开仓单号；多条平仓由同一开仓订单分批触发时，openNo 相同）
     const COMM_DATA_CLOSE = [
-      { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518023', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '—',                  status: '结算中' },
-      { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518024', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
+      { uid: 'U2026005', email: '202605285@qq.com',   openNo: 'TX20260518021', orderNo: 'TX20260518023', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '—',                  status: '结算中' },
+      { uid: 'U2026005', email: '202605285@qq.com',   openNo: 'TX20260518022', orderNo: 'TX20260518024', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
       // 历史用户单笔小额平仓：触发"待结算"规则（当月累计平仓 ≤ 1,000 USDT）
-      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260530011', orderTime: '2026-05-30 09:21:00', orderAmt: 400,   fee: -4,   rebateRate: 80, rebateAmt: 3.2, settleTime: '—',                  status: '待结算' },
-      { uid: 'U2026101', email: 'alice@gmail.com', orderNo: 'TX20260517019', orderTime: '2026-05-17 12:30:00', orderAmt: 50000, fee: -500, rebateRate: 80, rebateAmt: 400, settleTime: '2026-05-18 00:00:10', status: '已结算' },
-      { uid: 'U2026102', email: 'bob@outlook.com', orderNo: 'TX20260515008', orderTime: '2026-05-15 21:10:00', orderAmt: 20000, fee: -200, rebateRate: 80, rebateAmt: 160, settleTime: '—',                  status: '结算中' },
+      { uid: 'U2026107', email: 'frank@qq.com',    openNo: 'TX20260528015', orderNo: 'TX20260530011', orderTime: '2026-05-30 09:21:00', orderAmt: 400,   fee: -4,   rebateRate: 80, rebateAmt: 3.2, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026101', email: 'alice@gmail.com', openNo: 'TX20260516022', orderNo: 'TX20260517019', orderTime: '2026-05-17 12:30:00', orderAmt: 50000, fee: -500, rebateRate: 80, rebateAmt: 400, settleTime: '2026-05-18 00:00:10', status: '已结算' },
+      { uid: 'U2026102', email: 'bob@outlook.com', openNo: 'TX20260514099', orderNo: 'TX20260515008', orderTime: '2026-05-15 21:10:00', orderAmt: 20000, fee: -200, rebateRate: 80, rebateAmt: 160, settleTime: '—',                  status: '结算中' },
       // 另一条历史用户的待结算
-      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260512007', orderTime: '2026-05-12 16:08:00', orderAmt: 200,   fee: -2,   rebateRate: 80, rebateAmt: 1.6, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026107', email: 'frank@qq.com',    openNo: 'TX20260511039', orderNo: 'TX20260512007', orderTime: '2026-05-12 16:08:00', orderAmt: 200,   fee: -2,   rebateRate: 80, rebateAmt: 1.6, settleTime: '—',                  status: '待结算' },
     ];
 
     // ① 开仓佣金（与平仓表对应：同一用户的开仓订单，开仓时间略早于平仓）
+    // 新增字段：orderStatus（订单状态：持仓 / 部分平仓 / 已平仓）
     const COMM_DATA_OPEN = [
-      { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518021', orderTime: '2026-05-29 10:12:30', orderAmt: 10000, fee: -50, rebateRate: 80, rebateAmt: 40,  settleTime: '—',                  status: '结算中' },
-      { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518022', orderTime: '2026-05-29 10:18:45', orderAmt: 10000, fee: -50, rebateRate: 80, rebateAmt: 40,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
+      { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518021', orderTime: '2026-05-29 10:12:30', orderAmt: 10000, fee: -50, orderStatus: '已平仓',   rebateRate: 80, rebateAmt: 40,  settleTime: '—',                  status: '结算中' },
+      { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260518022', orderTime: '2026-05-29 10:18:45', orderAmt: 10000, fee: -50, orderStatus: '已平仓',   rebateRate: 80, rebateAmt: 40,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
       // 历史用户单笔小额开仓：当月累计开仓亦较小，触发"待结算"
-      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260528015', orderTime: '2026-05-28 14:55:00', orderAmt: 400,   fee: -2,   rebateRate: 80, rebateAmt: 1.6, settleTime: '—',                  status: '待结算' },
-      { uid: 'U2026101', email: 'alice@gmail.com', orderNo: 'TX20260516022', orderTime: '2026-05-16 09:40:18', orderAmt: 50000, fee: -250, rebateRate: 80, rebateAmt: 200, settleTime: '2026-05-18 00:00:10', status: '已结算' },
-      { uid: 'U2026102', email: 'bob@outlook.com', orderNo: 'TX20260514099', orderTime: '2026-05-14 18:22:30', orderAmt: 20000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '—',                  status: '结算中' },
-      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260511039', orderTime: '2026-05-11 11:30:00', orderAmt: 200,   fee: -1,   rebateRate: 80, rebateAmt: 0.8, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260528015', orderTime: '2026-05-28 14:55:00', orderAmt: 400,   fee: -2,   orderStatus: '部分平仓', rebateRate: 80, rebateAmt: 1.6, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026101', email: 'alice@gmail.com', orderNo: 'TX20260516022', orderTime: '2026-05-16 09:40:18', orderAmt: 50000, fee: -250, orderStatus: '已平仓',   rebateRate: 80, rebateAmt: 200, settleTime: '2026-05-18 00:00:10', status: '已结算' },
+      { uid: 'U2026102', email: 'bob@outlook.com', orderNo: 'TX20260514099', orderTime: '2026-05-14 18:22:30', orderAmt: 20000, fee: -100, orderStatus: '持仓',     rebateRate: 80, rebateAmt: 80,  settleTime: '—',                  status: '结算中' },
+      { uid: 'U2026107', email: 'frank@qq.com',    orderNo: 'TX20260511039', orderTime: '2026-05-11 11:30:00', orderAmt: 200,   fee: -1,   orderStatus: '持仓',     rebateRate: 80, rebateAmt: 0.8, settleTime: '—',                  status: '待结算' },
     ];
 
     // Tab ②：我获得的分成佣金（按开仓 / 平仓拆分两个子表）
 
     // ② 平仓分成（历史已有数据）
+    // 新增字段：openNo（关联的开仓单号）
     const SHARE_DATA_CLOSE = [
-      { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518023', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, orderComm: 80, shareRate: 30, myShare: 24,  settleTime: '—',                  status: '结算中' },
-      { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518024', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, orderComm: 80, shareRate: 30, myShare: 24,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
-      { uid: 'U2026107', email: 'frank@qq.com',    agentEmail: 'sub@gmail.com', orderNo: 'TX20260529008', orderTime: '2026-05-29 14:20:00', orderAmt: 500,   fee: -5,   orderComm: 4,  shareRate: 50, myShare: 2,   settleTime: '—',                  status: '待结算' },
-      { uid: 'U2026104', email: 'helen@gmail.com', agentEmail: 'sub@gmail.com', orderNo: 'TX20260517005', orderTime: '2026-05-17 11:30:00', orderAmt: 5000,  fee: -50,  orderComm: 40, shareRate: 70, myShare: 28,  settleTime: '2026-05-18 00:00:10', status: '已结算' },
+      { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', openNo: 'TX20260518021', orderNo: 'TX20260518023', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, orderComm: 80, shareRate: 30, myShare: 24,  settleTime: '—',                  status: '结算中' },
+      { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', openNo: 'TX20260518022', orderNo: 'TX20260518024', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, orderComm: 80, shareRate: 30, myShare: 24,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
+      { uid: 'U2026107', email: 'frank@qq.com',    agentEmail: 'sub@gmail.com', openNo: 'TX20260528015', orderNo: 'TX20260529008', orderTime: '2026-05-29 14:20:00', orderAmt: 500,   fee: -5,   orderComm: 4,  shareRate: 50, myShare: 2,   settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026104', email: 'helen@gmail.com', agentEmail: 'sub@gmail.com', openNo: 'TX20260516011', orderNo: 'TX20260517005', orderTime: '2026-05-17 11:30:00', orderAmt: 5000,  fee: -50,  orderComm: 40, shareRate: 70, myShare: 28,  settleTime: '2026-05-18 00:00:10', status: '已结算' },
     ];
 
     // ② 开仓分成（与平仓分成对应）
+    // 新增字段：orderStatus（订单状态：持仓 / 部分平仓 / 已平仓）
     const SHARE_DATA_OPEN = [
-      { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518021', orderTime: '2026-05-29 10:12:30', orderAmt: 10000, fee: -50, orderComm: 40, shareRate: 30, myShare: 12,  settleTime: '—',                  status: '结算中' },
-      { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518022', orderTime: '2026-05-29 10:18:45', orderAmt: 10000, fee: -50, orderComm: 40, shareRate: 30, myShare: 12,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
-      { uid: 'U2026107', email: 'frank@qq.com',    agentEmail: 'sub@gmail.com', orderNo: 'TX20260528015', orderTime: '2026-05-28 14:55:00', orderAmt: 500,   fee: -2,   orderComm: 1.6, shareRate: 50, myShare: 0.8, settleTime: '—',                  status: '待结算' },
-      { uid: 'U2026104', email: 'helen@gmail.com', agentEmail: 'sub@gmail.com', orderNo: 'TX20260516011', orderTime: '2026-05-16 08:45:20', orderAmt: 5000,  fee: -25,  orderComm: 20, shareRate: 70, myShare: 14,  settleTime: '2026-05-18 00:00:10', status: '已结算' },
+      { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518021', orderTime: '2026-05-29 10:12:30', orderAmt: 10000, fee: -50, orderStatus: '已平仓',   orderComm: 40, shareRate: 30, myShare: 12,  settleTime: '—',                  status: '结算中' },
+      { uid: 'U2026282', email: '202605282@qq.com',   agentEmail: '202605285@qq.com', orderNo: 'TX20260518022', orderTime: '2026-05-29 10:18:45', orderAmt: 10000, fee: -50, orderStatus: '已平仓',   orderComm: 40, shareRate: 30, myShare: 12,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
+      { uid: 'U2026107', email: 'frank@qq.com',    agentEmail: 'sub@gmail.com', orderNo: 'TX20260528015', orderTime: '2026-05-28 14:55:00', orderAmt: 500,   fee: -2,   orderStatus: '部分平仓', orderComm: 1.6, shareRate: 50, myShare: 0.8, settleTime: '—',                  status: '待结算' },
+      { uid: 'U2026104', email: 'helen@gmail.com', agentEmail: 'sub@gmail.com', orderNo: 'TX20260516011', orderTime: '2026-05-16 08:45:20', orderAmt: 5000,  fee: -25,  orderStatus: '持仓',     orderComm: 20, shareRate: 70, myShare: 14,  settleTime: '2026-05-18 00:00:10', status: '已结算' },
     ];
 
     /* ============== 子 Tab 方向 → 字段标签映射 ============== */
@@ -185,15 +198,17 @@
         <div class="table-wrap">
           <table class="data-table biz-table">
             <colgroup>
-              <col style="width:9%">
-              <col style="width:12%">
+              <col style="width:8%">
               <col style="width:11%">
+              ${direction === 'close' ? '<col style="width:10%">' : ''}
               <col style="width:10%">
               <col style="width:9%">
               <col style="width:8%">
+              <col style="width:8%">
+              ${direction === 'open' ? '<col style="width:8%">' : ''}
               <col style="width:7%">
               <col style="width:8%">
-              <col style="width:11%">
+              <col style="width:10%">
               <col style="width:7%">
               <col style="width:8%">
             </colgroup>
@@ -201,10 +216,12 @@
               <tr>
                 <th>用户UID</th>
                 <th>用户邮箱</th>
+                ${direction === 'close' ? '<th>开仓单号</th>' : ''}
                 <th>${L.orderNo}</th>
                 <th>${L.time}</th>
                 <th class="text-right">${L.amt}</th>
                 <th class="text-right">${L.fee}</th>
+                ${direction === 'open' ? '<th class="text-center">订单状态</th>' : ''}
                 <th class="text-right">返佣比例</th>
                 <th class="text-right">返佣金额</th>
                 <th>结算时间</th>
@@ -217,17 +234,19 @@
                 <tr>
                   <td><span class="uid-text">${r.uid}</span></td>
                   <td><span class="link-text">${r.email}</span></td>
+                  ${direction === 'close' ? `<td class="mono">${r.openNo}</td>` : ''}
                   <td class="mono">${r.orderNo}</td>
                   <td class="muted">${r.orderTime}</td>
                   <td class="text-right num">${fmtUSDT(r.orderAmt)}</td>
                   <td class="text-right num fee">${fmtUSDT(Math.abs(r.fee))}</td>
+                  ${direction === 'open' ? `<td class="text-center">${orderStatusTag(r.orderStatus)}</td>` : ''}
                   <td class="text-right num rate-num">${r.rebateRate}%</td>
                   <td class="text-right num strong">${fmtUSDT(r.rebateAmt)}</td>
                   <td class="muted">${r.settleTime}</td>
                   <td class="text-center">${statusTag(r.status)}</td>
                   <td class="remark-cell">${settleRemark(r.status, 'rebate')}</td>
                 </tr>
-              `).join('') : emptyRow(11)}
+              `).join('') : emptyRow(12)}
             </tbody>
           </table>
         </div>
@@ -256,13 +275,15 @@
         <div class="table-wrap">
           <table class="data-table biz-table">
             <colgroup>
+              <col style="width:6%">
+              <col style="width:9%">
+              <col style="width:9%">
+              ${direction === 'close' ? '<col style="width:8%">' : ''}
+              <col style="width:8%">
+              <col style="width:9%">
               <col style="width:7%">
-              <col style="width:9%">
-              <col style="width:9%">
-              <col style="width:9%">
-              <col style="width:9%">
               <col style="width:7%">
-              <col style="width:7%">
+              ${direction === 'open' ? '<col style="width:7%">' : ''}
               <col style="width:7%">
               <col style="width:8%">
               <col style="width:7%">
@@ -275,10 +296,12 @@
                 <th>用户UID</th>
                 <th>用户邮箱</th>
                 <th>代理邮箱</th>
+                ${direction === 'close' ? '<th>开仓单号</th>' : ''}
                 <th>${L.orderNo}</th>
                 <th>${L.time}</th>
                 <th class="text-right">${L.amt}</th>
                 <th class="text-right">${L.fee}</th>
+                ${direction === 'open' ? '<th class="text-center">订单状态</th>' : ''}
                 <th class="text-right">订单佣金</th>
                 <th class="text-right">我给代理设置的分成比例</th>
                 <th class="text-right">分成金额</th>
@@ -293,10 +316,12 @@
                   <td><span class="uid-text">${r.uid}</span></td>
                   <td><span class="link-text">${r.email}</span></td>
                   <td><span class="agent-tag">${r.agentEmail}</span></td>
+                  ${direction === 'close' ? `<td class="mono">${r.openNo}</td>` : ''}
                   <td class="mono">${r.orderNo}</td>
                   <td class="muted">${r.orderTime}</td>
                   <td class="text-right num">${fmtUSDT(r.orderAmt)}</td>
                   <td class="text-right num fee">${fmtUSDT(Math.abs(r.fee))}</td>
+                  ${direction === 'open' ? `<td class="text-center">${orderStatusTag(r.orderStatus)}</td>` : ''}
                   <td class="text-right num">${fmtUSDT(r.orderComm)}</td>
                   <td class="text-right num rate-num">${r.shareRate}%</td>
                   <td class="text-right num strong">${fmtUSDT(r.myShare)}</td>
@@ -304,7 +329,7 @@
                   <td class="text-center">${statusTag(r.status)}</td>
                   <td class="remark-cell">${settleRemark(r.status, 'share')}</td>
                 </tr>
-              `).join('') : emptyRow(13)}
+              `).join('') : emptyRow(14)}
             </tbody>
           </table>
         </div>
@@ -610,6 +635,11 @@
     .st-wait    { background: #fee2e2; color: #b91c1c; }
     .st-pending { background: #fef3c7; color: #b45309; }
     .st-settled { background: #dcfce7; color: #15803d; }
+
+    /* 订单状态：持仓（蓝）/ 部分平仓（橙）/ 已平仓（灰） */
+    .os-holding { background: #dbeafe; color: #1d4ed8; }
+    .os-partial { background: #ffedd5; color: #c2410c; }
+    .os-closed  { background: #e5e7eb; color: #4b5563; }
 
     /* —— 备注列 —— */
     /* 待结算订单的备注：橙色文字 + 截断显示，hover 完整 title 提示 */
