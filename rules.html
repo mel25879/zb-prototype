@@ -73,18 +73,19 @@
     };
 
     // 快照 ②：当月总交易额（按周期分组）
-    // 说明：代理邀请链路上所有人（含代理自己）的开仓交易额
+    // 说明：代理邀请链路上所有人（含代理自己）的开仓与平仓交易额
+    // closeVolume = 该开仓订单当月已平仓的累计金额（持仓中订单可能 < openVolume）
     const VOLUME_SNAPSHOT = {
       '2026-05': [
-        { uid: '—',         email: '代理本人',         inviter: '—',         openVolume: 12000, openTime: '2026-05-12 10:21:00', orderNo: 'TX20260512080' },
-        { uid: 'U2026005', email: '202605285@qq.com', inviter: '代理本人',  openVolume:  5000, openTime: '2026-05-30 21:10:00', orderNo: 'TX20260530021' },
-        { uid: 'U2026006', email: '202605286@qq.com', inviter: '代理本人',  openVolume:  3000, openTime: '2026-05-18 13:08:00', orderNo: 'TX20260518016' },
-        { uid: 'U2026007', email: '202605287@qq.com', inviter: '代理本人',  openVolume:  8500, openTime: '2026-05-25 14:55:00', orderNo: 'TX20260525033' },
-        { uid: 'U2026008', email: '202605288@qq.com', inviter: '代理本人',  openVolume: 21500, openTime: '2026-05-10 08:30:00', orderNo: 'TX20260510002' },
+        { uid: '—',         email: '代理本人',         inviter: '—',         openVolume: 12000, closeVolume: 11500, openTime: '2026-05-12 10:21:00', orderNo: 'TX20260512080' },
+        { uid: 'U2026005', email: '202605285@qq.com', inviter: '代理本人',  openVolume:  5000, closeVolume:  5000, openTime: '2026-05-30 21:10:00', orderNo: 'TX20260530021' },
+        { uid: 'U2026006', email: '202605286@qq.com', inviter: '代理本人',  openVolume:  3000, closeVolume:  3000, openTime: '2026-05-18 13:08:00', orderNo: 'TX20260518016' },
+        { uid: 'U2026007', email: '202605287@qq.com', inviter: '代理本人',  openVolume:  8500, closeVolume:  6200, openTime: '2026-05-25 14:55:00', orderNo: 'TX20260525033' },
+        { uid: 'U2026008', email: '202605288@qq.com', inviter: '代理本人',  openVolume: 21500, closeVolume: 21500, openTime: '2026-05-10 08:30:00', orderNo: 'TX20260510002' },
       ],
       '2026-04': [
-        { uid: '—',         email: '代理本人',         inviter: '—',         openVolume:  8000, openTime: '2026-04-15 11:00:00', orderNo: 'TX20260415055' },
-        { uid: 'U2026121', email: '202604121@qq.com', inviter: '代理本人',  openVolume:  6000, openTime: '2026-04-18 14:30:00', orderNo: 'TX20260418017' },
+        { uid: '—',         email: '代理本人',         inviter: '—',         openVolume:  8000, closeVolume:  8000, openTime: '2026-04-15 11:00:00', orderNo: 'TX20260415055' },
+        { uid: 'U2026121', email: '202604121@qq.com', inviter: '代理本人',  openVolume:  6000, closeVolume:  4200, openTime: '2026-04-18 14:30:00', orderNo: 'TX20260418017' },
       ],
       '2026-03': [],
       '2026-02': [],
@@ -204,18 +205,19 @@
       `;
     }
 
-    // 快照 ②：当月总交易额明细（6 列：用户UID/用户邮箱/邀请人邮箱/开仓交易额/开仓时间/开仓单号）
+    // 快照 ②：当月总交易额明细（7 列：用户UID/用户邮箱/邀请人邮箱/开仓交易额/平仓总额/开仓时间/开仓单号）
     function renderVolumeSnapTable(period) {
       const rows = VOLUME_SNAPSHOT[period] || [];
       return `
         <table class="data-table biz-table snap-table">
           <colgroup>
-            <col style="width:13%">
-            <col style="width:20%">
+            <col style="width:11%">
             <col style="width:18%">
-            <col style="width:16%">
-            <col style="width:17%">
-            <col style="width:16%">
+            <col style="width:15%">
+            <col style="width:13%">
+            <col style="width:13%">
+            <col style="width:15%">
+            <col style="width:15%">
           </colgroup>
           <thead>
             <tr>
@@ -223,6 +225,7 @@
               <th>用户邮箱</th>
               <th>邀请人邮箱</th>
               <th class="text-right">开仓交易额</th>
+              <th class="text-right">平仓总额</th>
               <th>开仓时间</th>
               <th>开仓单号</th>
             </tr>
@@ -234,10 +237,11 @@
                 <td><span class="link-text">${r.email}</span></td>
                 <td><span class="muted">${r.inviter}</span></td>
                 <td class="text-right num strong">${fmtUSDT(r.openVolume)}</td>
+                <td class="text-right num">${fmtUSDT(r.closeVolume)}</td>
                 <td class="muted">${r.openTime}</td>
                 <td class="mono">${r.orderNo}</td>
               </tr>
-            `).join('') : asmtEmptyRow(6)}
+            `).join('') : asmtEmptyRow(7)}
           </tbody>
         </table>
       `;
