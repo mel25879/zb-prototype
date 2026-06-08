@@ -205,7 +205,7 @@
       `;
     }
 
-    // 快照 ②：当月总交易额明细（7 列：用户UID/用户邮箱/邀请人邮箱/开仓交易额/平仓总额/开仓时间/开仓单号）
+    // 快照 ②：当月总交易额明细（7 列：用户UID/用户邮箱/邀请人邮箱/开仓交易额/平仓交易额/开仓时间/开仓单号）
     function renderVolumeSnapTable(period) {
       const rows = VOLUME_SNAPSHOT[period] || [];
       return `
@@ -225,7 +225,7 @@
               <th>用户邮箱</th>
               <th>邀请人邮箱</th>
               <th class="text-right">开仓交易额</th>
-              <th class="text-right">平仓总额</th>
+              <th class="text-right">平仓交易额</th>
               <th>开仓时间</th>
               <th>开仓单号</th>
             </tr>
