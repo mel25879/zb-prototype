@@ -65,10 +65,10 @@
 
     // ③ 我的下级代理邀请用户（L1）
     const SUB_AGENT_USERS = [
-      { email: '202605283@qq.com',   agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 50000, cumulativeOpenVolume: 78000, monthOpenVolume: 55555 },
-      { email: '202605284@qq.com',   agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 10,    cumulativeOpenVolume: 0,     monthOpenVolume: 0     },
-      { email: '20260522@qq.com',    agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 0,     cumulativeOpenVolume: 55555, monthOpenVolume: 55555 },
-      { email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',  registerTime: '2026-05-17 09:12:00', cumulativeDeposit: 600,   cumulativeOpenVolume: 14200, monthOpenVolume: 8500  },
+      { uid: 'U2026283', email: '202605283@qq.com',   agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 50000, cumulativeOpenVolume: 78000, monthOpenVolume: 55555 },
+      { uid: 'U2026284', email: '202605284@qq.com',   agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 10,    cumulativeOpenVolume: 0,     monthOpenVolume: 0     },
+      { uid: 'U2026522', email: '20260522@qq.com',    agentEmail: '202605285@qq.com',  registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 0,     cumulativeOpenVolume: 55555, monthOpenVolume: 55555 },
+      { uid: 'U2026104', email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',  registerTime: '2026-05-17 09:12:00', cumulativeDeposit: 600,   cumulativeOpenVolume: 14200, monthOpenVolume: 8500  },
     ];
 
     /* ============== 渲染工具 ============== */
@@ -99,6 +99,7 @@
       return `
         <div class="filter-row">
           <input type="text" class="form-input filter-input" id="f1_uid" placeholder="用户ID" />
+          <input type="text" class="form-input filter-input" id="f1_email" placeholder="用户邮箱" />
           <select class="form-select filter-input" id="f1_valid">
             <option value="">是否为有效用户</option>
             <option value="1">是</option>
@@ -113,15 +114,17 @@
         <div class="table-wrap">
           <table class="data-table biz-table">
             <colgroup>
-              <col style="width:22%">
-              <col style="width:16%">
-              <col style="width:16%">
-              <col style="width:17%">
-              <col style="width:17%">
-              <col style="width:12%">
+              <col style="width:13%">
+              <col style="width:20%">
+              <col style="width:15%">
+              <col style="width:14%">
+              <col style="width:15%">
+              <col style="width:14%">
+              <col style="width:9%">
             </colgroup>
             <thead>
               <tr>
+                <th>用户UID</th>
                 <th>用户邮箱</th>
                 <th>注册时间</th>
                 <th class="text-right">累计充值金额</th>
@@ -133,6 +136,7 @@
             <tbody>
               ${MY_USERS.length ? MY_USERS.map((u) => `
                 <tr>
+                  <td><span class="uid-text">${u.uid}</span></td>
                   <td><span class="link-text">${u.email}</span></td>
                   <td>${timeCell(u.registerTime)}</td>
                   <td class="text-right num">${moneyCell(u.cumulativeDeposit)}</td>
@@ -140,7 +144,7 @@
                   <td class="text-right num strong">${moneyCell(u.monthOpenVolume)}</td>
                   <td class="text-center">${isValidTag(u.isValid)}</td>
                 </tr>
-              `).join('') : emptyRow(6)}
+              `).join('') : emptyRow(7)}
             </tbody>
           </table>
         </div>
@@ -186,15 +190,17 @@
         <div class="table-wrap">
           <table class="data-table biz-table">
             <colgroup>
-              <col style="width:22%">
-              <col style="width:16%">
-              <col style="width:16%">
+              <col style="width:13%">
+              <col style="width:19%">
               <col style="width:14%">
-              <col style="width:18%">
               <col style="width:14%">
+              <col style="width:14%">
+              <col style="width:14%">
+              <col style="width:12%">
             </colgroup>
             <thead>
               <tr>
+                <th>用户UID</th>
                 <th>用户邮箱</th>
                 <th>注册时间</th>
                 <th>首次充值时间</th>
@@ -206,6 +212,7 @@
             <tbody>
               ${VALID_USERS.length ? VALID_USERS.map((u) => `
                 <tr>
+                  <td><span class="uid-text">${u.uid}</span></td>
                   <td><span class="link-text">${u.email}</span></td>
                   <td>${timeCell(u.registerTime)}</td>
                   <td>${timeCell(u.firstDepositTime)}</td>
@@ -213,7 +220,7 @@
                   <td class="text-right num strong">${moneyCell(u.monthOpenVolume)}</td>
                   <td class="text-center">${validTypeTag(u.validType)}</td>
                 </tr>
-              `).join('') : emptyRow(6)}
+              `).join('') : emptyRow(7)}
             </tbody>
           </table>
         </div>
@@ -237,15 +244,17 @@
         <div class="table-wrap">
           <table class="data-table biz-table">
             <colgroup>
-              <col style="width:20%">
-              <col style="width:18%">
+              <col style="width:13%">
+              <col style="width:17%">
               <col style="width:16%">
-              <col style="width:15%">
-              <col style="width:16%">
-              <col style="width:15%">
+              <col style="width:14%">
+              <col style="width:13%">
+              <col style="width:13%">
+              <col style="width:14%">
             </colgroup>
             <thead>
               <tr>
+                <th>用户UID</th>
                 <th>用户邮箱</th>
                 <th>他的代理邮箱</th>
                 <th>注册时间</th>
@@ -257,6 +266,7 @@
             <tbody>
               ${SUB_AGENT_USERS.length ? SUB_AGENT_USERS.map((u) => `
                 <tr>
+                  <td><span class="uid-text">${u.uid}</span></td>
                   <td><span class="link-text">${u.email}</span></td>
                   <td><span class="agent-tag">${u.agentEmail}</span></td>
                   <td>${timeCell(u.registerTime)}</td>
@@ -264,7 +274,7 @@
                   <td class="text-right num">${moneyCell(u.cumulativeOpenVolume)}</td>
                   <td class="text-right num strong">${moneyCell(u.monthOpenVolume)}</td>
                 </tr>
-              `).join('') : emptyRow(6)}
+              `).join('') : emptyRow(7)}
             </tbody>
           </table>
         </div>
@@ -494,6 +504,12 @@
     .link-text {
       color: var(--color-text);
       font-weight: var(--fw-medium);
+    }
+    .uid-text {
+      font-family: var(--font-mono, Menlo, Consolas, monospace);
+      font-size: 12.5px;
+      color: var(--color-text-secondary);
+      letter-spacing: 0.2px;
     }
     .agent-tag {
       display: inline-block;

@@ -42,6 +42,12 @@
     function fmtUSDT(v) {
       return Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
     }
+    // 手续费：自动带正负号（费用一般为负数：-12.34 USDT）
+    function fmtUSDSigned(v) {
+      const n = Number(v);
+      const sign = n > 0 ? '+' : '';
+      return sign + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' USDT';
+    }
     // 有效类型 tag（当月有效 / 历史有效）
     function validTypeTag(type) {
       const cls = type === '当月有效' ? 'vt-month' : 'vt-history';
@@ -58,40 +64,40 @@
     // ① 我邀请用户的 — 开仓
     // isValid: 是否为有效用户（依据规则：累计充值 ≥ 20 USDT 且 当月开仓交易额 > 5,000 USDT）
     const MY_OPEN = [
-      { email: '202605285@qq.com',   orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400,   isValid: false },
-      { email: 'alice***@gmail.com', orderNo: 'TX20260519005', openTime: '2026-05-30 11:22:01', openAmt: 10000, isValid: true  },
-      { email: 'bob***@outlook.com', orderNo: 'TX20260518023', openTime: '2026-05-28 09:12:00', openAmt: 50000, isValid: true  },
-      { email: 'david***@qq.com',    orderNo: 'TX20260517008', openTime: '2026-05-27 22:48:00', openAmt: 20000, isValid: true  },
+      { uid: 'U2026005', email: '202605285@qq.com',   orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400,   fee: -4,    isValid: false },
+      { uid: 'U2026101', email: 'alice***@gmail.com', orderNo: 'TX20260519005', openTime: '2026-05-30 11:22:01', openAmt: 10000, fee: -100,  isValid: true  },
+      { uid: 'U2026102', email: 'bob***@outlook.com', orderNo: 'TX20260518023', openTime: '2026-05-28 09:12:00', openAmt: 50000, fee: -500,  isValid: true  },
+      { uid: 'U2026103', email: 'david***@qq.com',    orderNo: 'TX20260517008', openTime: '2026-05-27 22:48:00', openAmt: 20000, fee: -200,  isValid: true  },
     ];
     // ① 我邀请用户的 — 平仓
     const MY_CLOSED = [
-      { email: '202605285@qq.com',   openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400,   isValid: false },
-      { email: 'alice***@gmail.com', openNo: 'TX20260515001', closeNo: 'TX20260515099', closeTime: '2026-05-29 16:45:00', closeAmt: 10000, isValid: true  },
-      { email: 'bob***@outlook.com', openNo: 'TX20260514023', closeNo: 'TX20260514099', closeTime: '2026-05-26 18:30:00', closeAmt: 50000, isValid: true  },
+      { uid: 'U2026005', email: '202605285@qq.com',   openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400,   fee: -4,    isValid: false },
+      { uid: 'U2026101', email: 'alice***@gmail.com', openNo: 'TX20260515001', closeNo: 'TX20260515099', closeTime: '2026-05-29 16:45:00', closeAmt: 10000, fee: -100,  isValid: true  },
+      { uid: 'U2026102', email: 'bob***@outlook.com', openNo: 'TX20260514023', closeNo: 'TX20260514099', closeTime: '2026-05-26 18:30:00', closeAmt: 50000, fee: -500,  isValid: true  },
     ];
 
     // ② 我的有效用户 — 开仓（多一个"用户有效类型"列与筛选）
     const VALID_OPEN = [
-      { email: '202605285@qq.com', orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400,   validType: '当月有效' },
-      { email: '202605286@qq.com', orderNo: 'TX20260519003', openTime: '2026-05-31 15:34:10', openAmt: 400,   validType: '历史有效' },
-      { email: 'alice***@gmail.com', orderNo: 'TX20260519005', openTime: '2026-05-30 11:22:01', openAmt: 10000, validType: '当月有效' },
+      { uid: 'U2026005', email: '202605285@qq.com', orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400,   fee: -4,   validType: '当月有效' },
+      { uid: 'U2026006', email: '202605286@qq.com', orderNo: 'TX20260519003', openTime: '2026-05-31 15:34:10', openAmt: 400,   fee: -4,   validType: '历史有效' },
+      { uid: 'U2026101', email: 'alice***@gmail.com', orderNo: 'TX20260519005', openTime: '2026-05-30 11:22:01', openAmt: 10000, fee: -100, validType: '当月有效' },
     ];
     // ② 我的有效用户 — 平仓
     const VALID_CLOSED = [
-      { email: '202605285@qq.com', openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400,   validType: '当月有效' },
-      { email: '202605286@qq.com', openNo: 'TX20260519003', closeNo: 'TX20260519004', closeTime: '2026-05-31 15:36:10', closeAmt: 400,   validType: '历史有效' },
+      { uid: 'U2026005', email: '202605285@qq.com', openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400, fee: -4, validType: '当月有效' },
+      { uid: 'U2026006', email: '202605286@qq.com', openNo: 'TX20260519003', closeNo: 'TX20260519004', closeTime: '2026-05-31 15:36:10', closeAmt: 400, fee: -4, validType: '历史有效' },
     ];
 
     // ③ 我的下级代理邀请用户 — 开仓（比 ① 多一列"代理邮箱"）
     const SUB_OPEN = [
-      { email: '202605285@qq.com',   agentEmail: 'sub***@gmail.com',     orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400   },
-      { email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',     orderNo: 'TX20260517005', openTime: '2026-05-29 09:12:00', openAmt: 5000  },
-      { email: 'lily***@gmail.com',  agentEmail: 'partner***@163.com',   orderNo: 'TX20260514042', openTime: '2026-05-27 16:08:00', openAmt: 42000 },
+      { uid: 'U2026005', email: '202605285@qq.com',   agentEmail: 'sub***@gmail.com',     orderNo: 'TX20260519001', openTime: '2026-05-31 15:34:10', openAmt: 400,   fee: -4    },
+      { uid: 'U2026104', email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',     orderNo: 'TX20260517005', openTime: '2026-05-29 09:12:00', openAmt: 5000,  fee: -50   },
+      { uid: 'U2026106', email: 'lily***@gmail.com',  agentEmail: 'partner***@163.com',   orderNo: 'TX20260514042', openTime: '2026-05-27 16:08:00', openAmt: 42000, fee: -420  },
     ];
     // ③ 我的下级代理邀请用户 — 平仓（比 ① 多一列"代理邮箱"）
     const SUB_CLOSED = [
-      { email: '202605285@qq.com',   agentEmail: 'sub***@gmail.com',     openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400  },
-      { email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',     openNo: 'TX20260517005', closeNo: 'TX20260517099', closeTime: '2026-05-29 11:30:00', closeAmt: 5000 },
+      { uid: 'U2026005', email: '202605285@qq.com',   agentEmail: 'sub***@gmail.com',     openNo: 'TX20260519001', closeNo: 'TX20260519002', closeTime: '2026-05-31 15:36:10', closeAmt: 400,  fee: -4   },
+      { uid: 'U2026104', email: 'helen***@gmail.com', agentEmail: 'sub***@gmail.com',     openNo: 'TX20260517005', closeNo: 'TX20260517099', closeTime: '2026-05-29 11:30:00', closeAmt: 5000, fee: -50  },
     ];
 
     /* ============== Filter Bar（按表类型动态生成） ============== */
@@ -142,45 +148,53 @@
     // hasAgent   = true 时多一列"代理邮箱"      （仅 Tab ③）
     // hasIsValid = true 时多一列"是否为有效用户"（仅 Tab ①）
     function renderOpenTable(data, hasValid, hasAgent, hasIsValid) {
-      const baseCols = 4;
+      const baseCols = 6; // UID + 用户邮箱 + 单号 + 时间 + 金额 + 手续费
       const cols = baseCols + (hasValid ? 1 : 0) + (hasAgent ? 1 : 0) + (hasIsValid ? 1 : 0);
 
       // 根据是否多列，动态选 colgroup（保证宽度总和=100%）
       let colgroup;
       if (hasValid) {
-        // Tab ②：用户/单号/时间/金额/有效类型（5 列）
+        // Tab ②：UID/用户/单号/时间/金额/手续费/有效类型（7 列）
         colgroup = `
-          <col style="width:24%">
-          <col style="width:22%">
-          <col style="width:20%">
+          <col style="width:11%">
           <col style="width:18%">
-          <col style="width:16%">
+          <col style="width:17%">
+          <col style="width:15%">
+          <col style="width:13%">
+          <col style="width:13%">
+          <col style="width:13%">
         `;
       } else if (hasAgent) {
-        // Tab ③：用户/代理/单号/时间/金额（5 列）
+        // Tab ③：UID/用户/代理/单号/时间/金额/手续费（7 列）
         colgroup = `
-          <col style="width:22%">
-          <col style="width:22%">
-          <col style="width:22%">
-          <col style="width:18%">
-          <col style="width:16%">
+          <col style="width:11%">
+          <col style="width:17%">
+          <col style="width:17%">
+          <col style="width:15%">
+          <col style="width:14%">
+          <col style="width:13%">
+          <col style="width:13%">
         `;
       } else if (hasIsValid) {
-        // Tab ①：用户/单号/时间/金额/是否为有效用户（5 列）
+        // Tab ①：UID/用户/单号/时间/金额/手续费/是否为有效用户（7 列）
         colgroup = `
-          <col style="width:26%">
+          <col style="width:11%">
+          <col style="width:18%">
+          <col style="width:17%">
+          <col style="width:15%">
+          <col style="width:13%">
+          <col style="width:13%">
+          <col style="width:13%">
+        `;
+      } else {
+        // 兜底（无任何附加列）：UID/用户/单号/时间/金额/手续费（6 列）
+        colgroup = `
+          <col style="width:12%">
           <col style="width:22%">
           <col style="width:20%">
           <col style="width:18%">
           <col style="width:14%">
-        `;
-      } else {
-        // 兜底（无任何附加列）：用户/单号/时间/金额（4 列）
-        colgroup = `
-          <col style="width:30%">
-          <col style="width:24%">
-          <col style="width:24%">
-          <col style="width:22%">
+          <col style="width:14%">
         `;
       }
 
@@ -190,11 +204,13 @@
             <colgroup>${colgroup}</colgroup>
             <thead>
               <tr>
+                <th>用户UID</th>
                 <th>用户邮箱</th>
                 ${hasAgent ? '<th>代理邮箱</th>' : ''}
                 <th>开仓单号</th>
                 <th>开仓时间</th>
                 <th class="text-right">开仓交易额</th>
+                <th class="text-right">手续费</th>
                 ${hasValid ? '<th class="text-center">用户有效类型</th>' : ''}
                 ${hasIsValid ? '<th class="text-center">是否为有效用户</th>' : ''}
               </tr>
@@ -202,11 +218,13 @@
             <tbody>
               ${data.length ? data.map((r) => `
                 <tr>
+                  <td><span class="uid-text">${r.uid}</span></td>
                   <td><span class="link-text">${r.email}</span></td>
                   ${hasAgent ? `<td><span class="agent-tag">${r.agentEmail}</span></td>` : ''}
                   <td class="mono">${r.orderNo}</td>
                   <td class="muted">${r.openTime}</td>
                   <td class="text-right num strong">${fmtUSDT(r.openAmt)}</td>
+                  <td class="text-right num fee">${fmtUSDT(Math.abs(r.fee))}</td>
                   ${hasValid ? `<td class="text-center">${validTypeTag(r.validType)}</td>` : ''}
                   ${hasIsValid ? `<td class="text-center">${isValidTag(r.isValid)}</td>` : ''}
                 </tr>
@@ -223,48 +241,56 @@
     // hasAgent   = true 时多一列"代理邮箱"      （仅 Tab ③）
     // hasIsValid = true 时多一列"是否为有效用户"（仅 Tab ①）
     function renderClosedTable(data, hasValid, hasAgent, hasIsValid) {
-      const baseCols = 5;
+      const baseCols = 7; // UID + 用户邮箱 + 开仓单号 + 平仓单号 + 平仓时间 + 平仓金额 + 手续费
       const cols = baseCols + (hasValid ? 1 : 0) + (hasAgent ? 1 : 0) + (hasIsValid ? 1 : 0);
 
       let colgroup;
       if (hasValid) {
-        // Tab ②：6 列
+        // Tab ②：8 列
         colgroup = `
-          <col style="width:20%">
-          <col style="width:18%">
-          <col style="width:18%">
-          <col style="width:16%">
+          <col style="width:10%">
+          <col style="width:15%">
           <col style="width:14%">
           <col style="width:14%">
+          <col style="width:13%">
+          <col style="width:12%">
+          <col style="width:11%">
+          <col style="width:11%">
         `;
       } else if (hasAgent) {
-        // Tab ③：6 列（多一列代理邮箱）
+        // Tab ③：8 列（多一列代理邮箱）
         colgroup = `
-          <col style="width:18%">
-          <col style="width:18%">
-          <col style="width:18%">
-          <col style="width:18%">
+          <col style="width:10%">
           <col style="width:14%">
           <col style="width:14%">
+          <col style="width:14%">
+          <col style="width:14%">
+          <col style="width:12%">
+          <col style="width:11%">
+          <col style="width:11%">
         `;
       } else if (hasIsValid) {
-        // Tab ①：6 列（多一列是否为有效用户）
+        // Tab ①：8 列（多一列是否为有效用户）
         colgroup = `
-          <col style="width:20%">
-          <col style="width:18%">
-          <col style="width:18%">
+          <col style="width:10%">
           <col style="width:16%">
           <col style="width:14%">
           <col style="width:14%">
+          <col style="width:13%">
+          <col style="width:12%">
+          <col style="width:11%">
+          <col style="width:10%">
         `;
       } else {
-        // 兜底：5 列
+        // 兜底：7 列
         colgroup = `
-          <col style="width:24%">
-          <col style="width:20%">
-          <col style="width:20%">
+          <col style="width:12%">
           <col style="width:18%">
-          <col style="width:18%">
+          <col style="width:16%">
+          <col style="width:16%">
+          <col style="width:13%">
+          <col style="width:13%">
+          <col style="width:12%">
         `;
       }
 
@@ -274,12 +300,14 @@
             <colgroup>${colgroup}</colgroup>
             <thead>
               <tr>
+                <th>用户UID</th>
                 <th>用户邮箱</th>
                 ${hasAgent ? '<th>代理邮箱</th>' : ''}
                 <th>开仓单号</th>
                 <th>平仓单号</th>
                 <th>平仓时间</th>
                 <th class="text-right">平仓交易额</th>
+                <th class="text-right">手续费</th>
                 ${hasValid ? '<th class="text-center">用户有效类型</th>' : ''}
                 ${hasIsValid ? '<th class="text-center">是否为有效用户</th>' : ''}
               </tr>
@@ -287,12 +315,14 @@
             <tbody>
               ${data.length ? data.map((r) => `
                 <tr>
+                  <td><span class="uid-text">${r.uid}</span></td>
                   <td><span class="link-text">${r.email}</span></td>
                   ${hasAgent ? `<td><span class="agent-tag">${r.agentEmail}</span></td>` : ''}
                   <td class="mono">${r.openNo}</td>
                   <td class="mono">${r.closeNo}</td>
                   <td class="muted">${r.closeTime}</td>
                   <td class="text-right num strong">${fmtUSDT(r.closeAmt)}</td>
+                  <td class="text-right num fee">${fmtUSDT(Math.abs(r.fee))}</td>
                   ${hasValid ? `<td class="text-center">${validTypeTag(r.validType)}</td>` : ''}
                   ${hasIsValid ? `<td class="text-center">${isValidTag(r.isValid)}</td>` : ''}
                 </tr>
@@ -543,6 +573,17 @@
     }
     .num.strong { color: var(--color-primary); font-weight: var(--fw-semibold); }
     .link-text { color: var(--color-text); font-weight: var(--fw-medium); }
+    .uid-text {
+      font-family: var(--font-mono, Menlo, Consolas, monospace);
+      font-size: 12.5px;
+      color: var(--color-text-secondary);
+      letter-spacing: 0.2px;
+    }
+    /* 手续费（负数）—— 用主题强调色（红/橙）以便与交易额区分 */
+    .biz-table td.fee, .biz-table td .fee, .biz-table td.num.fee {
+      color: #f04438;
+      font-weight: var(--fw-medium);
+    }
 
     /* —— 有效类型 tag + 是否为有效用户 tag（共用 .vt-tag 基类）—— */
     .vt-tag {

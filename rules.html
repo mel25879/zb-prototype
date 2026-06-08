@@ -58,14 +58,14 @@
     // 字段：email / registerTime / cumulativeDeposit / cumulativeOpenVolume / monthOpenVolume
     const INVITE_SNAPSHOT = {
       '2026-05': [
-        { email: '202605285@qq.com', registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 120,  cumulativeOpenVolume: 7800,  monthOpenVolume: 5000 },
-        { email: '202605286@qq.com', registerTime: '2026-04-31 15:34:10', cumulativeDeposit: 80,   cumulativeOpenVolume: 6200,  monthOpenVolume: 1000 },
-        { email: '202605287@qq.com', registerTime: '2026-05-15 09:21:00', cumulativeDeposit: 350,  cumulativeOpenVolume: 12300, monthOpenVolume: 8500 },
-        { email: '202605288@qq.com', registerTime: '2026-03-12 18:42:30', cumulativeDeposit: 180,  cumulativeOpenVolume: 9800,  monthOpenVolume: 1500 },
+        { uid: 'U2026005', email: '202605285@qq.com', registerTime: '2026-05-31 15:34:10', cumulativeDeposit: 120,  cumulativeOpenVolume: 7800,  monthOpenVolume: 5000 },
+        { uid: 'U2026006', email: '202605286@qq.com', registerTime: '2026-04-31 15:34:10', cumulativeDeposit: 80,   cumulativeOpenVolume: 6200,  monthOpenVolume: 1000 },
+        { uid: 'U2026007', email: '202605287@qq.com', registerTime: '2026-05-15 09:21:00', cumulativeDeposit: 350,  cumulativeOpenVolume: 12300, monthOpenVolume: 8500 },
+        { uid: 'U2026008', email: '202605288@qq.com', registerTime: '2026-03-12 18:42:30', cumulativeDeposit: 180,  cumulativeOpenVolume: 9800,  monthOpenVolume: 1500 },
       ],
       '2026-04': [
-        { email: '202604121@qq.com', registerTime: '2026-04-05 12:30:00', cumulativeDeposit: 220,  cumulativeOpenVolume: 14500, monthOpenVolume: 6000 },
-        { email: '202604122@qq.com', registerTime: '2026-03-20 09:00:00', cumulativeDeposit: 500,  cumulativeOpenVolume: 23400, monthOpenVolume: 2400 },
+        { uid: 'U2026121', email: '202604121@qq.com', registerTime: '2026-04-05 12:30:00', cumulativeDeposit: 220,  cumulativeOpenVolume: 14500, monthOpenVolume: 6000 },
+        { uid: 'U2026122', email: '202604122@qq.com', registerTime: '2026-03-20 09:00:00', cumulativeDeposit: 500,  cumulativeOpenVolume: 23400, monthOpenVolume: 2400 },
       ],
       '2026-03': [],
       '2026-02': [],
@@ -76,15 +76,15 @@
     // 说明：代理邀请链路上所有人（含代理自己）的开仓交易额
     const VOLUME_SNAPSHOT = {
       '2026-05': [
-        { email: '代理本人',         inviter: '—',         openVolume: 12000, openTime: '2026-05-12 10:21:00', orderNo: 'TX20260512080' },
-        { email: '202605285@qq.com', inviter: '代理本人',  openVolume:  5000, openTime: '2026-05-30 21:10:00', orderNo: 'TX20260530021' },
-        { email: '202605286@qq.com', inviter: '代理本人',  openVolume:  3000, openTime: '2026-05-18 13:08:00', orderNo: 'TX20260518016' },
-        { email: '202605287@qq.com', inviter: '代理本人',  openVolume:  8500, openTime: '2026-05-25 14:55:00', orderNo: 'TX20260525033' },
-        { email: '202605288@qq.com', inviter: '代理本人',  openVolume: 21500, openTime: '2026-05-10 08:30:00', orderNo: 'TX20260510002' },
+        { uid: '—',         email: '代理本人',         inviter: '—',         openVolume: 12000, openTime: '2026-05-12 10:21:00', orderNo: 'TX20260512080' },
+        { uid: 'U2026005', email: '202605285@qq.com', inviter: '代理本人',  openVolume:  5000, openTime: '2026-05-30 21:10:00', orderNo: 'TX20260530021' },
+        { uid: 'U2026006', email: '202605286@qq.com', inviter: '代理本人',  openVolume:  3000, openTime: '2026-05-18 13:08:00', orderNo: 'TX20260518016' },
+        { uid: 'U2026007', email: '202605287@qq.com', inviter: '代理本人',  openVolume:  8500, openTime: '2026-05-25 14:55:00', orderNo: 'TX20260525033' },
+        { uid: 'U2026008', email: '202605288@qq.com', inviter: '代理本人',  openVolume: 21500, openTime: '2026-05-10 08:30:00', orderNo: 'TX20260510002' },
       ],
       '2026-04': [
-        { email: '代理本人',         inviter: '—',         openVolume:  8000, openTime: '2026-04-15 11:00:00', orderNo: 'TX20260415055' },
-        { email: '202604121@qq.com', inviter: '代理本人',  openVolume:  6000, openTime: '2026-04-18 14:30:00', orderNo: 'TX20260418017' },
+        { uid: '—',         email: '代理本人',         inviter: '—',         openVolume:  8000, openTime: '2026-04-15 11:00:00', orderNo: 'TX20260415055' },
+        { uid: 'U2026121', email: '202604121@qq.com', inviter: '代理本人',  openVolume:  6000, openTime: '2026-04-18 14:30:00', orderNo: 'TX20260418017' },
       ],
       '2026-03': [],
       '2026-02': [],
@@ -165,20 +165,22 @@
       `;
     }
 
-    // 快照 ①：有效邀请人明细（精简至 5 列）
+    // 快照 ①：有效邀请人明细（6 列：用户UID/邮箱/注册时间/累计充值/累计开仓/当月开仓）
     function renderInviteSnapTable(period) {
       const rows = INVITE_SNAPSHOT[period] || [];
       return `
         <table class="data-table biz-table snap-table">
           <colgroup>
-            <col style="width:24%">
-            <col style="width:18%">
-            <col style="width:18%">
-            <col style="width:20%">
-            <col style="width:20%">
+            <col style="width:14%">
+            <col style="width:22%">
+            <col style="width:16%">
+            <col style="width:15%">
+            <col style="width:17%">
+            <col style="width:16%">
           </colgroup>
           <thead>
             <tr>
+              <th>用户UID</th>
               <th>用户邮箱</th>
               <th>注册时间</th>
               <th class="text-right">累计充值金额</th>
@@ -189,32 +191,35 @@
           <tbody>
             ${rows.length ? rows.map((u) => `
               <tr>
+                <td><span class="uid-text">${u.uid}</span></td>
                 <td><span class="link-text">${u.email}</span></td>
                 <td class="muted">${u.registerTime}</td>
                 <td class="text-right num">${fmtUSDT(u.cumulativeDeposit)}</td>
                 <td class="text-right num">${fmtUSDT(u.cumulativeOpenVolume)}</td>
                 <td class="text-right num strong">${fmtUSDT(u.monthOpenVolume)}</td>
               </tr>
-            `).join('') : asmtEmptyRow(5)}
+            `).join('') : asmtEmptyRow(6)}
           </tbody>
         </table>
       `;
     }
 
-    // 快照 ②：当月总交易额明细（精简至 5 列）
+    // 快照 ②：当月总交易额明细（6 列：用户UID/用户邮箱/邀请人邮箱/开仓交易额/开仓时间/开仓单号）
     function renderVolumeSnapTable(period) {
       const rows = VOLUME_SNAPSHOT[period] || [];
       return `
         <table class="data-table biz-table snap-table">
           <colgroup>
-            <col style="width:22%">
+            <col style="width:13%">
             <col style="width:20%">
             <col style="width:18%">
-            <col style="width:20%">
-            <col style="width:20%">
+            <col style="width:16%">
+            <col style="width:17%">
+            <col style="width:16%">
           </colgroup>
           <thead>
             <tr>
+              <th>用户UID</th>
               <th>用户邮箱</th>
               <th>邀请人邮箱</th>
               <th class="text-right">开仓交易额</th>
@@ -225,13 +230,14 @@
           <tbody>
             ${rows.length ? rows.map((r) => `
               <tr>
+                <td><span class="uid-text">${r.uid}</span></td>
                 <td><span class="link-text">${r.email}</span></td>
                 <td><span class="muted">${r.inviter}</span></td>
                 <td class="text-right num strong">${fmtUSDT(r.openVolume)}</td>
                 <td class="muted">${r.openTime}</td>
                 <td class="mono">${r.orderNo}</td>
               </tr>
-            `).join('') : asmtEmptyRow(5)}
+            `).join('') : asmtEmptyRow(6)}
           </tbody>
         </table>
       `;
@@ -1260,6 +1266,12 @@
     .num.strong { color: var(--color-primary); font-weight: var(--fw-semibold); }
     .mono { font-family: ui-monospace, 'SF Mono', Consolas, monospace; font-size: var(--fs-body-sm); color: var(--color-text); }
     .link-text { color: var(--color-text); font-weight: var(--fw-medium); }
+    .uid-text {
+      font-family: var(--font-mono, Menlo, Consolas, monospace);
+      font-size: 12.5px;
+      color: var(--color-text-secondary);
+      letter-spacing: 0.2px;
+    }
     .text-center { text-align: center; }
 
     /* 考核周期单元格（上：月份 pill；下：起止日期范围） */
