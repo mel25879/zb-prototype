@@ -123,6 +123,176 @@ function getCurrentRole() {
   catch (e) { return "L1"; }
 }
 
+/* ============== 语言切换 ============== */
+/**
+ * 多语言支持（原型阶段仅 UI 演示，不做实际翻译）
+ * - 写入 localStorage 'zb_agent_lang' 持久化用户选择
+ * - 顶部右侧 Header 渲染下拉，点击切换并刷新页面
+ */
+const LANG_KEY = "zb_agent_lang";
+const LANG_OPTIONS = [
+  { code: "en",    label: "English" },
+  { code: "vi",    label: "Tiếng Việt" },
+  { code: "en-in", label: "Indian English" },
+];
+function getCurrentLang() {
+  try { return localStorage.getItem(LANG_KEY) || "en"; }
+  catch (e) { return "en"; }
+}
+function setCurrentLang(code) {
+  try { localStorage.setItem(LANG_KEY, code); } catch (e) {}
+}
+function getCurrentLangLabel() {
+  const cur = getCurrentLang();
+  const opt = LANG_OPTIONS.find(o => o.code === cur);
+  return opt ? opt.label : "English";
+}
+
+/* ============== 顶部页签（Tab）导航 ============== */
+/**
+ * 多 Tab 页签持久化（类似浏览器标签页）
+ * - 每访问一个菜单 → 自动加入 tab 列表
+ * - 已存在则只切换激活状态，不重复添加
+ * - 支持关闭（"规则说明"为 home，固定不可关闭）
+ * - 关闭当前 tab 后自动跳到相邻 tab
+ * - localStorage 持久化，刷新不丢
+ */
+const TABS_KEY = "zb_opened_tabs";
+const TAB_HOME_ID = "rules";   // 首页菜单 ID（固定，不可关闭）
+
+function loadTabs() {
+  try {
+    const d = JSON.parse(localStorage.getItem(TABS_KEY));
+    if (Array.isArray(d)) return d;
+  } catch (e) {}
+  return [];
+}
+function saveTabs(arr) {
+  try { localStorage.setItem(TABS_KEY, JSON.stringify(arr)); } catch (e) {}
+}
+
+/**
+ * 确保当前页存在于 tabs 中，且 home 始终在第一位
+ * 同时根据角色过滤掉不可见的 tab
+ */
+function ensureCurrentInTabs() {
+  const currentId  = getCurrentPageId();
+  const currentRole = getCurrentRole();
+  let tabs = loadTabs();
+
+  // 过滤：剔除角色不可见的菜单 tab
+  tabs = tabs.filter((t) => {
+    const m = MENU_CONFIG.find((x) => x.id === t.id);
+    if (!m) return false;
+    if (!m.roles || m.roles.length === 0) return true;
+    return m.roles.includes(currentRole);
+  });
+
+  // 保证 home tab 始终在最前
+  const homeMenu = MENU_CONFIG.find((m) => m.id === TAB_HOME_ID);
+  if (homeMenu && !tabs.find((t) => t.id === TAB_HOME_ID)) {
+    tabs.unshift({ id: homeMenu.id, name: homeMenu.name, href: homeMenu.href });
+  }
+
+  // 加入当前页（如尚未存在）
+  if (!tabs.find((t) => t.id === currentId)) {
+    const m = MENU_CONFIG.find((x) => x.id === currentId);
+    if (m) tabs.push({ id: m.id, name: m.name, href: m.href });
+  }
+
+  saveTabs(tabs);
+  return tabs;
+}
+
+/**
+ * 关闭一个 tab
+ * - home tab 不可关闭
+ * - 关闭当前页 → 跳转到相邻 tab（优先左侧，否则右侧）
+ * - 关闭非当前页 → 仅重新渲染 tab bar
+ */
+function closeTab(tabId, evt) {
+  if (evt) { evt.preventDefault(); evt.stopPropagation(); }
+  if (tabId === TAB_HOME_ID) return;  // 首页固定，不可关闭
+
+  let tabs = loadTabs();
+  const idx = tabs.findIndex((t) => t.id === tabId);
+  if (idx < 0) return;
+
+  const isClosingCurrent = (tabId === getCurrentPageId());
+  tabs.splice(idx, 1);
+  saveTabs(tabs);
+
+  if (isClosingCurrent) {
+    // 跳转到相邻 tab：优先左侧（idx-1），无则右侧（idx），无则 home
+    const next = tabs[idx - 1] || tabs[idx] || { href: "rules.html" };
+    window.location.href = next.href;
+  } else {
+    refreshTabBar();
+  }
+}
+
+/**
+ * 渲染顶部 Tab Bar
+ */
+function renderTabBar() {
+  const tabs      = ensureCurrentInTabs();
+  const currentId = getCurrentPageId();
+  return `
+    <div class="tab-bar">
+      <div class="tab-list">
+        ${tabs.map((tab) => {
+          const active = tab.id === currentId ? "active" : "";
+          const fixed  = tab.id === TAB_HOME_ID ? "tab-fixed" : "";
+          const closeBtn = (tab.id === TAB_HOME_ID)
+            ? ""
+            : `<span class="tab-close" data-tab-close="${tab.id}" title="关闭">×</span>`;
+          return `
+            <a class="tab ${active} ${fixed}" href="${tab.href}" data-tab-id="${tab.id}">
+              <span class="tab-name">${tab.name}</span>
+              ${closeBtn}
+            </a>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+/** 只重新渲染 tab bar（不重渲整页） */
+function refreshTabBar() {
+  const wrap = document.querySelector(".tab-bar-wrap");
+  if (!wrap) return;
+  wrap.innerHTML = renderTabBar();
+  bindTabBarEvents();
+}
+
+/** 绑定 tab 关闭事件 */
+function bindTabBarEvents() {
+  document.querySelectorAll("[data-tab-close]").forEach((btn) => {
+    btn.addEventListener("click", (e) => closeTab(btn.dataset.tabClose, e));
+  });
+}
+
+/** 绑定语言下拉切换 */
+function bindLangDropdown() {
+  const trigger = document.getElementById("langTrigger");
+  const menu    = document.getElementById("langMenu");
+  if (!trigger || !menu) return;
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.toggle("show");
+  });
+  document.addEventListener("click", () => menu.classList.remove("show"));
+  menu.querySelectorAll("[data-lang]").forEach((item) => {
+    item.addEventListener("click", (e) => {
+      e.preventDefault();
+      const code = item.dataset.lang;
+      setCurrentLang(code);
+      window.location.reload();  // 刷新让选中态生效（原型阶段不实际翻译内容）
+    });
+  });
+}
+
 /* ============== 侧边栏折叠状态工具 ============== */
 
 const SIDEBAR_COLLAPSED_KEY = "zb_sidebar_collapsed";
@@ -304,6 +474,8 @@ function bindSidebarCollapse() {
  * @param {string} pageTitle 当前页标题（来自页面 <body data-title="...">）
  */
 function renderHeader(pageTitle) {
+  const curLang      = getCurrentLang();
+  const curLangLabel = getCurrentLangLabel();
   return `
     <header class="header">
       <div class="breadcrumb">
@@ -312,6 +484,27 @@ function renderHeader(pageTitle) {
         <span class="current">${pageTitle || "未命名页面"}</span>
       </div>
       <div class="header-actions">
+        <!-- 多语言下拉（原型阶段：仅 UI 演示，不实际翻译内容） -->
+        <div class="lang-dropdown" id="langDropdown">
+          <button class="lang-trigger" id="langTrigger" title="切换语言">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/>
+              <path d="M3 12h18 M12 3a14 14 0 010 18 M12 3a14 14 0 000 18" stroke="currentColor" stroke-width="1.8"/>
+            </svg>
+            <span class="lang-label">${curLangLabel}</span>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <div class="lang-menu" id="langMenu">
+            ${LANG_OPTIONS.map(o => `
+              <a href="#" data-lang="${o.code}" class="${o.code === curLang ? 'active' : ''}">
+                <span class="lang-name">${o.label}</span>
+                ${o.code === curLang ? '<span class="lang-check">✓</span>' : ''}
+              </a>
+            `).join('')}
+          </div>
+        </div>
         <div class="user-dropdown" id="userDropdown">
           <button class="user-trigger">
             <div class="avatar">${SITE_CONFIG.user.initial}</div>
@@ -404,6 +597,7 @@ function initLayout(contentHtml) {
       ${renderSidebar()}
       <div class="main-wrapper">
         ${renderHeader(pageTitle)}
+        <div class="tab-bar-wrap">${renderTabBar()}</div>
         <main class="main-content">
           ${contentHtml || ""}
         </main>
@@ -412,8 +606,10 @@ function initLayout(contentHtml) {
   `;
 
   bindUserDropdown();
+  bindLangDropdown();
   bindSidebarInviteCopy();
   bindSidebarCollapse();
+  bindTabBarEvents();
 
   if (typeof window.onPageReady === "function") {
     window.onPageReady();

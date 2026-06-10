@@ -7,17 +7,17 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>规则说明</title>
-  <link rel="stylesheet" href="assets/css/common.css?v=7">
+  <link rel="stylesheet" href="assets/css/common.css?v=8">
 </head>
 <body data-title="规则说明">
   <div id="app"></div>
-  <script src="assets/js/common.js?v=7"></script>
+  <script src="assets/js/common.js?v=8"></script>
   <script>
     /* =================================================================
        规则说明页 · v5
        结构（按需求文档）：
-         1. 顶部：角色切换 + 测试代理开关
-         2. 测试代理提示条（仅测试代理可见，显示到期日）
+         1. 顶部：角色切换 + 试用期代理开关
+         2. 试用期代理提示条（仅试用期代理可见，显示到期日）
          3. Hero 横幅：当月返佣比例
          4. 运营信息卡（邀请链接 / 邀请码 / L1 额外指标）
          5. 主卡：佣金计算规则 + 月度考核标准
@@ -276,9 +276,9 @@
       });
     }
 
-    /* ============== 测试代理标记 ============== */
-    // localStorage: zb_agent_test = '1' 表示测试代理
-    //               zb_agent_test_expire = 'YYYY-MM-DD' 测试到期时间
+    /* ============== 试用期代理标记 ============== */
+    // localStorage: zb_agent_test = '1' 表示试用期代理
+    //               zb_agent_test_expire = 'YYYY-MM-DD' 试用到期时间
     const TEST_KEY        = 'zb_agent_test';
     const TEST_EXPIRE_KEY = 'zb_agent_test_expire';
 
@@ -329,7 +329,7 @@
           </svg>
           <div class="settle-tip-text">
             <div class="settle-tip-title">结算说明</div>
-            <p>对于 <b>注册时间不在当月</b> 的历史用户，若其当月累计平仓金额 <b>≤ 1,000 USDT</b>，对应的 ${incomePart} 将进入 <b class="text-warning">「待结算」</b> 状态，暂不结算。</p>
+            <p>对于 <b>注册时间不在当月</b> 的历史用户，若其当月累计开仓、平仓金额均 <b>≤ 2,000 USDT</b>，对应的 ${incomePart} 将进入 <b class="text-warning">「待结算」</b> 状态，暂不结算。</p>
           </div>
         </div>
       `;
@@ -596,7 +596,7 @@
       `;
     }
 
-    /* ============== 测试代理提示条 ============== */
+    /* ============== 试用期代理提示条 ============== */
     function renderTestNotice() {
       if (!isTestAgent()) return '';
       const expire = getTestExpire();
@@ -606,7 +606,7 @@
             <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="1.8"/>
             <path d="M12 8v4 M12 16h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
-          <span>您当前为 <b>测试代理</b>，测试到期时间：<b class="test-date">${expire}</b></span>
+          <span>您当前为 <b>试用期代理</b>，试用到期时间：<b class="test-date">${expire}</b></span>
         </div>
       `;
     }
@@ -625,7 +625,7 @@
             </div>
             <button class="test-toggle" id="btnTestToggle">
               <span class="test-toggle-dot"></span>
-              <span id="testToggleText">测试代理：关</span>
+              <span id="testToggleText">试用期代理：关</span>
             </button>
           </div>
         </div>
@@ -719,7 +719,7 @@
       const txt = document.getElementById('testToggleText');
       if (!btn || !txt) return;
       btn.classList.toggle('on', on);
-      txt.textContent = on ? '测试代理：开' : '测试代理：关';
+      txt.textContent = on ? '试用期代理：开' : '试用期代理：关';
     }
 
     window.onPageReady = function () {
@@ -741,7 +741,7 @@
           refreshTestToggleUI();
           // 切换后刷新测试提示条
           document.getElementById('testNotice').innerHTML = renderTestNotice();
-          toast(next ? '已开启测试代理模式' : '已关闭测试代理模式', 'success');
+          toast(next ? '已开启试用期代理模式' : '已关闭试用期代理模式', 'success');
         });
       }
 
@@ -793,7 +793,7 @@
       box-shadow: 0 2px 6px rgba(0, 200, 150, 0.3);
     }
 
-    /* 测试代理开关 pill */
+    /* 试用期代理开关 pill */
     .test-toggle {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 6px 14px;
@@ -814,7 +814,7 @@
     .test-toggle.on { background: #fff8e6; border-color: #fde68a; color: #b45309; }
     .test-toggle.on .test-toggle-dot { background: var(--color-warning); }
 
-    /* —————————————————————————————————————— 测试代理提示条 */
+    /* —————————————————————————————————————— 试用期代理提示条 */
     .test-notice {
       display: flex; align-items: center; gap: 8px;
       padding: 10px 14px;

@@ -7,11 +7,11 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>我的收入</title>
-  <link rel="stylesheet" href="assets/css/common.css?v=7">
+  <link rel="stylesheet" href="assets/css/common.css?v=8">
 </head>
 <body data-title="我的收入">
   <div id="app"></div>
-  <script src="assets/js/common.js?v=7"></script>
+  <script src="assets/js/common.js?v=8"></script>
   <script>
     /* =================================================================
        我的收入 · 按需求文档实现
@@ -69,8 +69,8 @@
     function settleRemark(status, incomeType) {
       if (status === '待结算') {
         const incomeName = incomeType === 'share' ? '分成金额' : '返佣金额';
-        const full = `历史用户当月累计平仓金额 ≤ 1,000 USDT，${incomeName}进入「待结算」状态，暂不结算。`;
-        return `<span class="remark-pending" title="${full}">历史用户当月累计平仓 ≤ 1,000 USDT</span>`;
+        const full = `历史用户当月累计开仓、平仓金额均 ≤ 2,000 USDT，${incomeName}进入「待结算」状态，暂不结算。`;
+        return `<span class="remark-pending" title="${full}">历史用户当月累计开仓、平仓 ≤ 2,000 USDT</span>`;
       }
       return '<span class="muted">—</span>';
     }
@@ -87,7 +87,7 @@
     const COMM_DATA_CLOSE = [
       { uid: 'U2026005', email: '202605285@qq.com',   openNo: 'TX20260518021', orderNo: 'TX20260518023', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '—',                  status: '结算中' },
       { uid: 'U2026005', email: '202605285@qq.com',   openNo: 'TX20260518022', orderNo: 'TX20260518024', orderTime: '2026-05-31 15:34:10', orderAmt: 10000, fee: -100, rebateRate: 80, rebateAmt: 80,  settleTime: '2026-05-31 16:34:10', status: '已结算' },
-      // 历史用户单笔小额平仓：触发"待结算"规则（当月累计平仓 ≤ 1,000 USDT）
+      // 历史用户单笔小额平仓：触发"待结算"规则（当月累计开仓、平仓金额均 ≤ 2,000 USDT）
       { uid: 'U2026107', email: 'frank@qq.com',    openNo: 'TX20260528015', orderNo: 'TX20260530011', orderTime: '2026-05-30 09:21:00', orderAmt: 400,   fee: -4,   rebateRate: 80, rebateAmt: 3.2, settleTime: '—',                  status: '待结算' },
       { uid: 'U2026101', email: 'alice@gmail.com', openNo: 'TX20260516022', orderNo: 'TX20260517019', orderTime: '2026-05-17 12:30:00', orderAmt: 50000, fee: -500, rebateRate: 80, rebateAmt: 400, settleTime: '2026-05-18 00:00:10', status: '已结算' },
       { uid: 'U2026102', email: 'bob@outlook.com', openNo: 'TX20260514099', orderNo: 'TX20260515008', orderTime: '2026-05-15 21:10:00', orderAmt: 20000, fee: -200, rebateRate: 80, rebateAmt: 160, settleTime: '—',                  status: '结算中' },
